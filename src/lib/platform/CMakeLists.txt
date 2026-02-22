@@ -25,6 +25,11 @@ elseif (UNIX)
     file(GLOB sources "XWindows*.cpp")
 endif()
 
+if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+    list(APPEND headers "UhidServer.h")
+    list(APPEND sources "UhidServer.cpp")
+endif()
+
 if (BARRIER_ADD_HEADERS)
     list(APPEND sources ${headers})
 endif()

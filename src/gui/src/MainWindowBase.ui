@@ -9,7 +9,7 @@
    </sizepolicy>
   </property>
   <property name="windowTitle">
-   <string>Barrier</string>
+   <string>EtherWaver</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout_2">
@@ -366,7 +366,7 @@
   </widget>
   <action name="m_pActionAbout">
    <property name="text">
-    <string>&amp;About Barrier...</string>
+    <string>&amp;About EtherWaver...</string>
    </property>
    <property name="shortcut">
     <string notr="true"/>

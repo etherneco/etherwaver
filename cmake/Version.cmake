@@ -6,7 +6,7 @@ set (BARRIER_VERSION_PATCH 0)
 set (BARRIER_VERSION_STAGE "release")
 
 #
-# Barrier Version
+# EtherWaver Version
 #
 if (NOT DEFINED BARRIER_VERSION_MAJOR)
     if (DEFINED ENV{BARRIER_VERSION_MAJOR})
@@ -29,7 +29,7 @@ if (NOT DEFINED BARRIER_VERSION_PATCH)
         set (BARRIER_VERSION_PATCH $ENV{BARRIER_VERSION_PATCH})
     else()
         set (BARRIER_VERSION_PATCH 2)
-        message (WARNING "Barrier version wasn't set. Set to ${BARRIER_VERSION_MAJOR}.${BARRIER_VERSION_MINOR}.${BARRIER_VERSION_PATCH}")
+        message (WARNING "EtherWaver version wasn't set. Set to ${BARRIER_VERSION_MAJOR}.${BARRIER_VERSION_MINOR}.${BARRIER_VERSION_PATCH}")
     endif()
 endif()
 
@@ -81,7 +81,7 @@ endif()
 
 set (BARRIER_VERSION "${BARRIER_VERSION_MAJOR}.${BARRIER_VERSION_MINOR}.${BARRIER_VERSION_PATCH}-${BARRIER_VERSION_STAGE}")
 set (BARRIER_VERSION_STRING "${BARRIER_VERSION}-${BARRIER_VERSION_TAG}")
-message (STATUS "Full Barrier version string is '" ${BARRIER_VERSION_STRING} "'")
+message (STATUS "Full EtherWaver version string is '" ${BARRIER_VERSION_STRING} "'")
 
 add_definitions (-DBARRIER_VERSION="${BARRIER_VERSION}")
 add_definitions (-DBARRIER_VERSION_STRING="${BARRIER_VERSION_STRING}")
@@ -95,4 +95,3 @@ add_definitions (-DBARRIER_BUILD_NUMBER=${BARRIER_BUILD_NUMBER})
 if (BARRIER_DEVELOPER_MODE)
     add_definitions (-DBARRIER_DEVELOPER_MODE=1)
 endif()
-

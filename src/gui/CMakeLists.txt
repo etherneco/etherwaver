@@ -119,7 +119,7 @@ if (WIN32)
     set (GUI_RC_FILES res/win/Barrier.rc)
 endif()
 
-add_executable (barrier WIN32
+add_executable (waver WIN32
     ${GUI_COMMON_SOURCE_FILES}
     ${GUI_COMMON_HEADER_FILES}
     ${GUI_SOURCE_FILES}
@@ -131,34 +131,35 @@ add_executable (barrier WIN32
 
 include_directories (./src)
 
-target_link_libraries(barrier net base io Qt5::Core Qt5::Widgets Qt5::Network ${OPENSSL_LIBS})
-target_compile_definitions (barrier PRIVATE -DBARRIER_VERSION_STAGE="${BARRIER_VERSION_STAGE}")
-target_compile_definitions (barrier PRIVATE -DBARRIER_REVISION="${BARRIER_REVISION}")
+set_target_properties(waver PROPERTIES OUTPUT_NAME "waver")
+target_link_libraries(waver net base io Qt5::Core Qt5::Widgets Qt5::Network ${OPENSSL_LIBS})
+target_compile_definitions (waver PRIVATE -DBARRIER_VERSION_STAGE="${BARRIER_VERSION_STAGE}")
+target_compile_definitions (waver PRIVATE -DBARRIER_REVISION="${BARRIER_REVISION}")
 
 if (WIN32)
     include_directories ($ENV{BONJOUR_SDK_HOME}/Include)
     find_library (DNSSD_LIB dnssd.lib
                   HINTS ENV BONJOUR_SDK_HOME
                   PATH_SUFFIXES "Lib/x64")
-    set_target_properties (barrier PROPERTIES LINK_FLAGS "/NODEFAULTLIB:LIBCMT")
-    target_link_libraries (barrier ${DNSSD_LIB})
+    set_target_properties (waver PROPERTIES LINK_FLAGS "/NODEFAULTLIB:LIBCMT")
+    target_link_libraries (waver ${DNSSD_LIB})
 elseif (APPLE)
     find_library(APPSERVICES_LIB ApplicationServices)
-    target_link_libraries(barrier ${APPSERVICES_LIB})
+    target_link_libraries(waver ${APPSERVICES_LIB})
 else()
-    target_link_libraries (barrier dns_sd)
+    target_link_libraries (waver dns_sd)
 endif()
 
 if (HAVE_X11)
-    target_link_libraries (barrier X11)
+    target_link_libraries (waver X11)
 endif()
 
-target_link_libraries (barrier common)
+target_link_libraries (waver common)
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    install (TARGETS barrier DESTINATION ${BARRIER_BUNDLE_BINARY_DIR})
+    install (TARGETS waver DESTINATION ${BARRIER_BUNDLE_BINARY_DIR})
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux" OR ${CMAKE_SYSTEM_NAME} MATCHES "BSD")
-    install (TARGETS barrier DESTINATION bin)
+    install (TARGETS waver DESTINATION bin)
 endif()
 
 if (BARRIER_BUILD_TESTS)

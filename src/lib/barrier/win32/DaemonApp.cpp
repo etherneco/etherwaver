@@ -138,7 +138,7 @@ DaemonApp::run(int argc, char** argv)
             mainLoop(false);
         }
         else {
-            arch.daemonize("Barrier", mainLoopStatic);
+            arch.daemonize("EtherWaver", mainLoopStatic);
         }
 
         return kExitSuccess;
@@ -236,7 +236,7 @@ DaemonApp::mainLoop(bool daemonized)
 void
 DaemonApp::foregroundError(const char* message)
 {
-    MessageBox(NULL, message, "Barrier Service", MB_OK | MB_ICONERROR);
+    MessageBox(NULL, message, "EtherWaver Service", MB_OK | MB_ICONERROR);
 }
 
 std::string
@@ -273,7 +273,7 @@ DaemonApp::handleIpcMessage(const Event& e, void*)
                 ServerArgs serverArgs;
                 ClientArgs clientArgs;
                 int argc = static_cast<int>(argsArray.size());
-                bool server = argsArray[0].find("barriers") != String::npos ? true : false;
+                bool server = argsArray[0].find("wavers") != String::npos ? true : false;
                 ArgsBase* argBase = NULL;
 
                 if (server) {

@@ -14,8 +14,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-file(GLOB headers "*.h")
-file(GLOB sources "*.cpp")
+file(GLOB headers CONFIGURE_DEPENDS "*.h")
+file(GLOB sources CONFIGURE_DEPENDS "*.cpp")
 
 if (BARRIER_ADD_HEADERS)
     list(APPEND sources ${headers})

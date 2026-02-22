@@ -39,12 +39,13 @@ if (BARRIER_ADD_HEADERS)
     list(APPEND sources ${headers})
 endif()
 
-add_executable(barrierc ${sources})
-target_link_libraries(barrierc
+add_executable(waverc ${sources})
+set_target_properties(waverc PROPERTIES OUTPUT_NAME "waverc")
+target_link_libraries(waverc
     arch base client common io mt net ipc platform server synlib ${libs} ${OPENSSL_LIBS})
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    install (TARGETS barrierc DESTINATION ${BARRIER_BUNDLE_BINARY_DIR})
+    install (TARGETS waverc DESTINATION ${BARRIER_BUNDLE_BINARY_DIR})
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    install (TARGETS barrierc DESTINATION bin)
+    install (TARGETS waverc DESTINATION bin)
 endif()

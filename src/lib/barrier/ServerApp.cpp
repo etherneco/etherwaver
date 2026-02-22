@@ -137,7 +137,7 @@ ServerApp::help()
                             barrier::fs::u8path(SYS_CONFIG_NAME)).u8string();
 
     std::ostringstream buffer;
-    buffer << "Start the barrier server component. The server shares the keyboard &\n"
+    buffer << "Start the waver server component. The server shares the keyboard &\n"
            << "mouse of the local machine with the connected clients based on the\n"
            << "configuration file.\n"
            << "\n"
@@ -895,9 +895,9 @@ const char*
 ServerApp::daemonName() const
 {
 #if SYSAPI_WIN32
-    return "Barrier Server";
+    return "EtherWaver Server";
 #elif SYSAPI_UNIX
-    return "barriers";
+    return "wavers";
 #endif
 }
 

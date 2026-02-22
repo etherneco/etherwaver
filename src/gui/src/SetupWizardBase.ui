@@ -23,7 +23,7 @@
    </size>
   </property>
   <property name="windowTitle">
-   <string>Setup Barrier</string>
+   <string>Setup EtherWaver</string>
   </property>
   <widget class="QWizardPage" name="m_pWelcomePage">
    <property name="title">

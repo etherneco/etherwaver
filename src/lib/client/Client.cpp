@@ -18,7 +18,9 @@
 
 #include "client/Client.h"
 
+#include "client/IInputBackend.h"
 #include "client/ServerProxy.h"
+#include "client/InputBackendFactory.h"
 #include "barrier/Screen.h"
 #include "barrier/FileChunk.h"
 #include "barrier/DropHelper.h"
@@ -70,7 +72,8 @@ Client::Client(IEventQueue* events, const std::string& name, const NetworkAddres
     m_socket(NULL),
     m_useSecureNetwork(args.m_enableCrypto),
     m_args(args),
-    m_enableClipboard(true)
+    m_enableClipboard(true),
+    m_inputBackend(createInputBackend(screen, args))
 {
     assert(m_socketFactory != NULL);
     assert(m_screen        != NULL);
@@ -95,6 +98,7 @@ Client::Client(IEventQueue* events, const std::string& name, const NetworkAddres
                                 new TMethodEventJob<Client>(this,
                                     &Client::handleFileRecieveCompleted));
     }
+
 }
 
 Client::~Client()
@@ -244,7 +248,7 @@ void
 Client::enter(SInt32 xAbs, SInt32 yAbs, UInt32, KeyModifierMask mask, bool)
 {
     m_active = true;
-    m_screen->mouseMove(xAbs, yAbs);
+    m_inputBackend->enter(xAbs, yAbs);
     m_screen->enter(mask);
 
     if (m_sendFileThread != NULL) {
@@ -258,6 +262,7 @@ Client::leave()
 {
     m_active = false;
 
+    m_inputBackend->leave();
     m_screen->leave();
 
     if (m_enableClipboard) {
@@ -297,50 +302,50 @@ Client::setClipboardDirty(ClipboardID, bool)
 void
 Client::keyDown(KeyID id, KeyModifierMask mask, KeyButton button)
 {
-     m_screen->keyDown(id, mask, button);
+    m_inputBackend->keyDown(id, mask, button);
 }
 
 void
 Client::keyRepeat(KeyID id, KeyModifierMask mask,
                 SInt32 count, KeyButton button)
 {
-     m_screen->keyRepeat(id, mask, count, button);
+    m_inputBackend->keyRepeat(id, mask, count, button);
 }
 
 void
 Client::keyUp(KeyID id, KeyModifierMask mask, KeyButton button)
 {
-     m_screen->keyUp(id, mask, button);
+    m_inputBackend->keyUp(id, mask, button);
 }
 
 void
 Client::mouseDown(ButtonID id)
 {
-     m_screen->mouseDown(id);
+    m_inputBackend->mouseDown(id);
 }
 
 void
 Client::mouseUp(ButtonID id)
 {
-     m_screen->mouseUp(id);
+    m_inputBackend->mouseUp(id);
 }
 
 void
 Client::mouseMove(SInt32 x, SInt32 y)
 {
-    m_screen->mouseMove(x, y);
+    m_inputBackend->mouseMove(x, y);
 }
 
 void
 Client::mouseRelativeMove(SInt32 dx, SInt32 dy)
 {
-    m_screen->mouseRelativeMove(dx, dy);
+    m_inputBackend->mouseRelativeMove(dx, dy);
 }
 
 void
 Client::mouseWheel(SInt32 xDelta, SInt32 yDelta)
 {
-    m_screen->mouseWheel(xDelta, yDelta);
+    m_inputBackend->mouseWheel(xDelta, yDelta);
 }
 
 void

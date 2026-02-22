@@ -1,6 +1,6 @@
 /*
  * barrier -- mouse and keyboard sharing utility
- * Copyright (C) 2014-2016 Symless Ltd.
+ * Copyright (C) Barrier contributors
  *
  * This package is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -17,16 +17,14 @@
 
 #pragma once
 
-#include "barrier/ArgsBase.h"
+#include <memory>
 
-class NetworkAddress;
+namespace barrier {
+class Screen;
+}
 
-class ClientArgs : public ArgsBase {
-public:
-    ClientArgs();
+class ClientArgs;
+class IInputBackend;
 
-public:
-    int                    m_yscroll;
-    bool                m_uhidEnabled;
-    String                m_uhidName;
-};
+std::unique_ptr<IInputBackend> createInputBackend(barrier::Screen* screen, const ClientArgs& args);
+

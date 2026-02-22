@@ -16,7 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 cmake_minimum_required (VERSION 3.4)
-project (barrier C CXX)
+project (Etherwaver C CXX)
 
 option (BARRIER_BUILD_GUI "Build the GUI" ON)
 option (BARRIER_BUILD_INSTALLER "Build the installer" ON)
@@ -422,9 +422,9 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
     configure_files (${BARRIER_BUNDLE_SOURCE_DIR} ${BARRIER_BUNDLE_DIR})
 
-    add_custom_target(Barrier_MacOS ALL
+    add_custom_target(EtherWaver_MacOS ALL
                       bash build_dist.sh
-                      DEPENDS barrier barriers barrierc
+                      DEPENDS waver wavers waverc
                       WORKING_DIRECTORY ${BARRIER_BUNDLE_DIR})
 endif()
 

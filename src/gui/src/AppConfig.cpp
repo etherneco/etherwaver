@@ -23,13 +23,13 @@
 #include <QtNetwork>
 
 #if defined(Q_OS_WIN)
-const char AppConfig::m_BarriersName[] = "barriers.exe";
-const char AppConfig::m_BarriercName[] = "barrierc.exe";
+const char AppConfig::m_BarriersName[] = "wavers.exe";
+const char AppConfig::m_BarriercName[] = "waverc.exe";
 const char AppConfig::m_BarrierLogDir[] = "log/";
 #define DEFAULT_PROCESS_MODE Service
 #else
-const char AppConfig::m_BarriersName[] = "barriers";
-const char AppConfig::m_BarriercName[] = "barrierc";
+const char AppConfig::m_BarriersName[] = "wavers";
+const char AppConfig::m_BarriercName[] = "waverc";
 const char AppConfig::m_BarrierLogDir[] = "/var/log/";
 #define DEFAULT_PROCESS_MODE Desktop
 #endif
@@ -61,7 +61,9 @@ AppConfig::AppConfig(QSettings* settings) :
     m_CryptoEnabled(false),
     m_AutoHide(false),
     m_AutoStart(false),
-    m_MinimizeToTray(false)
+    m_MinimizeToTray(false),
+    m_UhidEnabled(false),
+    m_UhidName("EtherWaver UHID")
 {
     Q_ASSERT(m_pSettings);
 
@@ -145,7 +147,7 @@ void AppConfig::loadSettings()
     m_Interface = settings().value("interface").toString();
     m_LogLevel = settings().value("logLevel", 3).toInt(); // level 3: INFO
     m_LogToFile = settings().value("logToFile", false).toBool();
-    m_LogFilename = settings().value("logFilename", barrierLogDir() + "barrier.log").toString();
+    m_LogFilename = settings().value("logFilename", barrierLogDir() + "waver.log").toString();
     m_WizardLastRun = settings().value("wizardLastRun", 0).toInt();
     m_Language = settings().value("language", QLocale::system().name()).toString();
     m_StartedBefore = settings().value("startedBefore", false).toBool();
@@ -163,6 +165,8 @@ void AppConfig::loadSettings()
     m_AutoHide = settings().value("autoHide", false).toBool();
     m_AutoStart = settings().value("autoStart", false).toBool();
     m_MinimizeToTray = settings().value("minimizeToTray", false).toBool();
+    m_UhidEnabled = settings().value("uhidEnabled", false).toBool();
+    m_UhidName = settings().value("uhidName", "EtherWaver UHID").toString();
 }
 
 void AppConfig::saveSettings()
@@ -187,6 +191,8 @@ void AppConfig::saveSettings()
     settings().setValue("autoHide", m_AutoHide);
     settings().setValue("autoStart", m_AutoStart);
     settings().setValue("minimizeToTray", m_MinimizeToTray);
+    settings().setValue("uhidEnabled", m_UhidEnabled);
+    settings().setValue("uhidName", m_UhidName);
     settings().sync();
 }
 
@@ -243,3 +249,11 @@ bool AppConfig::getAutoStart() { return m_AutoStart; }
 void AppConfig::setMinimizeToTray(bool b) { m_MinimizeToTray = b; }
 
 bool AppConfig::getMinimizeToTray() { return m_MinimizeToTray; }
+
+void AppConfig::setUhidEnabled(bool enabled) { m_UhidEnabled = enabled; }
+
+bool AppConfig::getUhidEnabled() const { return m_UhidEnabled; }
+
+void AppConfig::setUhidName(const QString& name) { m_UhidName = name; }
+
+const QString& AppConfig::getUhidName() const { return m_UhidName; }

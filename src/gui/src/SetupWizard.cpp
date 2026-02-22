@@ -60,7 +60,7 @@ SetupWizard::~SetupWizard()
 bool SetupWizard::validateCurrentPage()
 {
     QMessageBox message;
-    message.setWindowTitle(tr("Setup Barrier"));
+    message.setWindowTitle(tr("Setup EtherWaver"));
     message.setIcon(QMessageBox::Information);
 
     if (currentPage() == m_pNodePage)

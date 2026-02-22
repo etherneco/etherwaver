@@ -107,6 +107,55 @@ ArgParser::parseClientArgs(ClientArgs& args, int argc, const char* const* argv)
             // define scroll
             args.m_yscroll = atoi(argv[++i]);
         }
+        else if (strcmp(argv[i], "--uhid") == 0) {
+            if (i + 1 >= argc) {
+                LOG((CLOG_PRINT "%s: missing arguments for `%s'" BYE,
+                    args.m_exename.c_str(), argv[i], args.m_exename.c_str()));
+                args.m_shouldExit = true;
+                return false;
+            }
+            const char* value = argv[++i];
+            if (strcmp(value, "enable") == 0 || strcmp(value, "1") == 0) {
+                args.m_uhidEnabled = true;
+            }
+            else if (strcmp(value, "disable") == 0 || strcmp(value, "0") == 0) {
+                args.m_uhidEnabled = false;
+            }
+            else {
+                LOG((CLOG_PRINT "%s: invalid value for --uhid (%s)" BYE,
+                    args.m_exename.c_str(), value, args.m_exename.c_str()));
+                return false;
+            }
+        }
+        else if (strncmp(argv[i], "--uhid=", 7) == 0) {
+            const char* value = argv[i] + 7;
+            if (strcmp(value, "enable") == 0 || strcmp(value, "1") == 0) {
+                args.m_uhidEnabled = true;
+            }
+            else if (strcmp(value, "disable") == 0 || strcmp(value, "0") == 0) {
+                args.m_uhidEnabled = false;
+            }
+            else {
+                LOG((CLOG_PRINT "%s: invalid value for --uhid (%s)" BYE,
+                    args.m_exename.c_str(), value, args.m_exename.c_str()));
+                return false;
+            }
+        }
+        else if (strcmp(argv[i], "--uhid-name") == 0) {
+            if (i + 1 >= argc) {
+                LOG((CLOG_PRINT "%s: missing arguments for `%s'" BYE,
+                    args.m_exename.c_str(), argv[i], args.m_exename.c_str()));
+                args.m_shouldExit = true;
+                return false;
+            }
+            args.m_uhidName = argv[++i];
+        }
+        else if (strncmp(argv[i], "--uhid-name=", 12) == 0) {
+            args.m_uhidName = argv[i] + 12;
+        }
+        else if (strncmp(argv[i], "--uhid-name-", 12) == 0) {
+            args.m_uhidName = argv[i] + 12;
+        }
         else {
             if (i + 1 == argc) {
                 args.m_barrierAddress = argv[i];

@@ -39,12 +39,13 @@ if (BARRIER_ADD_HEADERS)
     list(APPEND sources ${headers})
 endif()
 
-add_executable(barriers ${sources})
-target_link_libraries(barriers
+add_executable(wavers ${sources})
+set_target_properties(wavers PROPERTIES OUTPUT_NAME "wavers")
+target_link_libraries(wavers
     arch base client common io mt net ipc platform server synlib ${libs} ${OPENSSL_LIBS})
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    install (TARGETS barriers DESTINATION ${BARRIER_BUNDLE_BINARY_DIR})
+    install (TARGETS wavers DESTINATION ${BARRIER_BUNDLE_BINARY_DIR})
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    install (TARGETS barriers DESTINATION bin)
+    install (TARGETS wavers DESTINATION bin)
 endif()

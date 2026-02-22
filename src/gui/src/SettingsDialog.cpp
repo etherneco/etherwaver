@@ -31,6 +31,17 @@
 #include <QFileDialog>
 #include <QDir>
 
+namespace {
+bool isLinuxPlatform()
+{
+#if defined(Q_OS_LINUX)
+    return true;
+#else
+    return false;
+#endif
+}
+}
+
 SettingsDialog::SettingsDialog(QWidget* parent, AppConfig& config) :
     QDialog(parent, Qt::WindowTitleHint | Qt::WindowSystemMenuHint),
     Ui::SettingsDialogBase(),
@@ -51,6 +62,9 @@ SettingsDialog::SettingsDialog(QWidget* parent, AppConfig& config) :
     m_pCheckBoxAutoStart->setChecked(appConfig().getAutoStart());
     m_pCheckBoxMinimizeToTray->setChecked(appConfig().getMinimizeToTray());
     m_pCheckBoxEnableCrypto->setChecked(m_appConfig.getCryptoEnabled());
+    m_pCheckBoxEnableUhid->setChecked(m_appConfig.getUhidEnabled());
+    m_pLineEditUhidName->setText(m_appConfig.getUhidName());
+    m_pLineEditUhidName->setEnabled(m_pCheckBoxEnableUhid->isChecked());
     checkbox_require_client_certificate->setChecked(m_appConfig.getRequireClientCertificate());
 
 #if defined(Q_OS_WIN)
@@ -60,6 +74,14 @@ SettingsDialog::SettingsDialog(QWidget* parent, AppConfig& config) :
     m_pLabelElevate->hide();
     m_pComboElevate->hide();
 #endif
+
+    if (!isLinuxPlatform()) {
+        m_pCheckBoxEnableUhid->setChecked(false);
+        m_pCheckBoxEnableUhid->setEnabled(false);
+        m_pCheckBoxEnableUhid->setToolTip(tr("Available only on Linux."));
+        m_pLabelUhidName->setEnabled(false);
+        m_pLineEditUhidName->setEnabled(false);
+    }
 }
 
 void SettingsDialog::accept()
@@ -68,6 +90,8 @@ void SettingsDialog::accept()
     m_appConfig.setPort(m_pSpinBoxPort->value());
     m_appConfig.setNetworkInterface(m_pLineEditInterface->text());
     m_appConfig.setCryptoEnabled(m_pCheckBoxEnableCrypto->isChecked());
+    m_appConfig.setUhidEnabled(m_pCheckBoxEnableUhid->isChecked());
+    m_appConfig.setUhidName(m_pLineEditUhidName->text().trimmed());
     m_appConfig.setRequireClientCertificate(checkbox_require_client_certificate->isChecked());
     m_appConfig.setLogLevel(m_pComboLogLevel->currentIndex());
     m_appConfig.setLogToFile(m_pCheckBoxLogToFile->isChecked());
@@ -132,6 +156,11 @@ void SettingsDialog::on_m_pButtonBrowseLog_clicked()
     {
         m_pLineEditLogFilename->setText(fileName);
     }
+}
+
+void SettingsDialog::on_m_pCheckBoxEnableUhid_toggled(bool checked)
+{
+    m_pLineEditUhidName->setEnabled(checked);
 }
 
 void SettingsDialog::on_m_pComboLanguage_currentIndexChanged(int index)

@@ -58,15 +58,15 @@
 
 static const QString allFilesFilter(QObject::tr("All files (*.*)"));
 #if defined(Q_OS_WIN)
-static const char barrierConfigName[] = "barrier.sgc";
-static const QString barrierConfigFilter(QObject::tr("Barrier Configurations (*.sgc)"));
+static const char barrierConfigName[] = "etherwaver.sgc";
+static const QString barrierConfigFilter(QObject::tr("EtherWaver Configurations (*.sgc)"));
 static QString bonjourBaseUrl = "http://binaries.symless.com/bonjour/";
 static const char bonjourFilename32[] = "Bonjour.msi";
 static const char bonjourFilename64[] = "Bonjour64.msi";
 static const char bonjourTargetFilename[] = "Bonjour.msi";
 #else
-static const char barrierConfigName[] = "barrier.conf";
-static const QString barrierConfigFilter(QObject::tr("Barrier Configurations (*.conf)"));
+static const char barrierConfigName[] = "etherwaver.conf";
+static const QString barrierConfigFilter(QObject::tr("EtherWaver Configurations (*.conf)"));
 #endif
 static const QString barrierConfigOpenFilter(barrierConfigFilter + ";;" + allFilesFilter);
 static const QString barrierConfigSaveFilter(barrierConfigFilter);
@@ -121,7 +121,7 @@ MainWindow::MainWindow(QSettings& settings, AppConfig& appConfig) :
     m_pLogWindow(new LogWindow(nullptr))
 {
     // explicitly unset DeleteOnClose so the window can be show and hidden
-    // repeatedly until Barrier is finished
+    // repeatedly until EtherWaver is finished
     setAttribute(Qt::WA_DeleteOnClose, false);
     // mark the windows as sort of "dialog" window so that tiling window
     // managers will float it by default (X11)
@@ -246,7 +246,7 @@ void MainWindow::createTrayIcon()
 
     m_pTrayIcon = new QSystemTrayIcon(this);
     m_pTrayIcon->setContextMenu(m_pTrayIconMenu);
-    m_pTrayIcon->setToolTip("Barrier");
+    m_pTrayIcon->setToolTip("EtherWaver");
 
     connect(m_pTrayIcon, SIGNAL(activated(QSystemTrayIcon::ActivationReason)),
             this, SLOT(trayActivated(QSystemTrayIcon::ActivationReason)));
@@ -258,7 +258,7 @@ void MainWindow::createTrayIcon()
 
 void MainWindow::retranslateMenuBar()
 {
-    m_pMenuBarrier->setTitle(tr("&Barrier"));
+    m_pMenuBarrier->setTitle(tr("&EtherWaver"));
     m_pMenuHelp->setTitle(tr("&Help"));
 }
 
@@ -415,9 +415,9 @@ void MainWindow::checkConnected(const QString& line)
 
         if (!appConfig().startedBefore() && isVisible()) {
                 QMessageBox::information(
-                    this, "Barrier",
-                    tr("Barrier is now connected. You can close the "
-                    "config window and Barrier will remain connected in "
+                    this, "EtherWaver",
+                    tr("EtherWaver is now connected. You can close the "
+                    "config window and EtherWaver will remain connected in "
                     "the background."));
 
             appConfig().setStartedBefore(true);
@@ -613,8 +613,8 @@ bool MainWindow::clientArgs(QStringList& args, QString& app)
     if (!QFile::exists(app))
     {
         show();
-        QMessageBox::warning(this, tr("Barrier client not found"),
-                             tr("The executable for the barrier client does not exist."));
+        QMessageBox::warning(this, tr("Waver client not found"),
+                             tr("The executable for the waver client does not exist."));
         return false;
     }
 
@@ -629,6 +629,16 @@ bool MainWindow::clientArgs(QStringList& args, QString& app)
         args << "--log" << appConfig().logFilenameCmd();
     }
 
+#if defined(Q_OS_LINUX)
+    if (appConfig().getUhidEnabled()) {
+        args << "--uhid=enable";
+        const QString uhidName = appConfig().getUhidName().trimmed();
+        if (!uhidName.isEmpty()) {
+            args << "--uhid-name" << uhidName;
+        }
+    }
+#endif
+
     // check auto config first, if it is disabled or no server detected,
     // use line edit host name if it is not empty
     if (m_pCheckBoxAutoConfig->isChecked()) {
@@ -641,7 +651,7 @@ bool MainWindow::clientArgs(QStringList& args, QString& app)
         show();
         if (!m_SuppressEmptyServerWarning) {
             QMessageBox::warning(this, tr("Hostname is empty"),
-                             tr("Please fill in a hostname for the barrier client to connect to."));
+                             tr("Please fill in a hostname for the waver client to connect to."));
         }
         return false;
     }
@@ -661,7 +671,7 @@ QString MainWindow::configFilename()
         m_pTempConfigFile = new QTemporaryFile();
         if (!m_pTempConfigFile->open())
         {
-            QMessageBox::critical(this, tr("Cannot write configuration file"), tr("The temporary configuration file required to start barrier can not be written."));
+            QMessageBox::critical(this, tr("Cannot write configuration file"), tr("The temporary configuration file required to start waver can not be written."));
             return "";
         }
 
@@ -675,7 +685,7 @@ QString MainWindow::configFilename()
         if (!QFile::exists(m_pLineEditConfigFile->text()))
         {
             if (QMessageBox::warning(this, tr("Configuration filename invalid"),
-                tr("You have not filled in a valid configuration file for the barrier server. "
+                tr("You have not filled in a valid configuration file for the waver server. "
                         "Do you want to browse for the configuration file now?"), QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes
                     || !on_m_pButtonBrowseConfigFile_clicked())
                 return "";
@@ -710,8 +720,8 @@ bool MainWindow::serverArgs(QStringList& args, QString& app)
 
     if (!QFile::exists(app))
     {
-        QMessageBox::warning(this, tr("Barrier server not found"),
-                             tr("The executable for the barrier server does not exist."));
+        QMessageBox::warning(this, tr("Waver server not found"),
+                             tr("The executable for the waver server does not exist."));
         return false;
     }
 
@@ -782,7 +792,7 @@ void MainWindow::stopDesktop()
         return;
     }
 
-    appendLogInfo("stopping barrier desktop process");
+    appendLogInfo("stopping waver desktop process");
 
     if (barrierProcess()->isOpen()) {
         // try to shutdown child gracefully
@@ -851,17 +861,17 @@ void MainWindow::setBarrierState(qBarrierState state)
             m_pLabelPadlock->hide();
         }
 
-        setStatus(tr("Barrier is running."));
+        setStatus(tr("EtherWaver is running."));
 
         break;
     }
     case barrierConnecting:
         m_pLabelPadlock->hide();
-        setStatus(tr("Barrier is starting."));
+        setStatus(tr("EtherWaver is starting."));
         break;
     case barrierDisconnected:
         m_pLabelPadlock->hide();
-        setStatus(tr("Barrier is not running."));
+        setStatus(tr("EtherWaver is not running."));
         break;
     case barrierTransfering:
         break;
@@ -1075,7 +1085,7 @@ void MainWindow::on_m_pGroupServer_toggled(bool on)
 
 bool MainWindow::on_m_pButtonBrowseConfigFile_clicked()
 {
-    QString fileName = QFileDialog::getOpenFileName(this, tr("Browse for a barriers config file"), QString(), barrierConfigOpenFilter);
+    QString fileName = QFileDialog::getOpenFileName(this, tr("Browse for a wavers config file"), QString(), barrierConfigOpenFilter);
 
     if (!fileName.isEmpty())
     {
@@ -1216,7 +1226,7 @@ void MainWindow::downloadBonjour()
     }
     else {
         QMessageBox::critical(
-            this, tr("Barrier"),
+            this, tr("EtherWaver"),
             tr("Failed to detect system architecture."));
         return;
     }
@@ -1230,7 +1240,7 @@ void MainWindow::downloadBonjour()
 
     if (m_DownloadMessageBox == NULL) {
         m_DownloadMessageBox = new QMessageBox(this);
-        m_DownloadMessageBox->setWindowTitle("Barrier");
+        m_DownloadMessageBox->setWindowTitle("EtherWaver");
         m_DownloadMessageBox->setIcon(QMessageBox::Information);
         m_DownloadMessageBox->setText("Installing Bonjour, please wait...");
         m_DownloadMessageBox->setStandardButtons(0);
@@ -1262,7 +1272,7 @@ void MainWindow::installBonjour()
         m_DownloadMessageBox->hide();
 
         QMessageBox::warning(
-            this, "Barrier",
+            this, "EtherWaver",
             tr("Failed to download Bonjour installer to location: %1")
             .arg(tempLocation));
         return;
@@ -1299,7 +1309,7 @@ void MainWindow::promptAutoConfig()
 {
     if (!isBonjourRunning()) {
         int r = QMessageBox::question(
-            this, tr("Barrier"),
+            this, tr("EtherWaver"),
             tr("Do you want to enable auto config and install Bonjour?\n\n"
                "This feature helps you establish the connection."),
             QMessageBox::Yes | QMessageBox::No);
@@ -1329,7 +1339,7 @@ void MainWindow::on_m_pCheckBoxAutoConfig_toggled(bool checked)
     if (!isBonjourRunning() && checked) {
         if (!m_SuppressAutoConfigWarning) {
             int r = QMessageBox::information(
-                this, tr("Barrier"),
+                this, tr("EtherWaver"),
                 tr("Auto config feature requires Bonjour.\n\n"
                    "Do you want to install Bonjour?"),
                 QMessageBox::Yes | QMessageBox::No);

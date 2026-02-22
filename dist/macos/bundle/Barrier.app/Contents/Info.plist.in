@@ -4,18 +4,18 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>English</string>
     <key>CFBundleDisplayName</key>
-    <string>Barrier</string>
+    <string>EtherWaver</string>
     <key>CFBundleExecutable</key>
-    <string>barrier</string>
+    <string>waver</string>
     <key>CFBundleIconFile</key>
     <string>Barrier.icns</string>
     <key>CFBundleIdentifier</key>
-    <string>barrier</string>
+    <string>etherwaver</string>
     <!-- TODO: Fix this in v2.0 //-->
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Barrier</string>
+    <string>EtherWaver</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleSignature</key>

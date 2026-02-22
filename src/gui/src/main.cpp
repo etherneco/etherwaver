@@ -59,7 +59,7 @@ int main(int argc, char* argv[])
     // QApplication's constructor will call a fscking abort() if
     // DISPLAY is bad. Let's check it first and handle it gracefully
     if (!display_is_valid()) {
-        fprintf(stderr, "The Barrier GUI requires a display. Quitting...\n");
+        fprintf(stderr, "The EtherWaver GUI requires a display. Quitting...\n");
         return 1;
     }
 #endif
@@ -69,7 +69,7 @@ int main(int argc, char* argv[])
 #endif
 	QCoreApplication::setOrganizationName("Debauchee");
 	QCoreApplication::setOrganizationDomain("github.com");
-	QCoreApplication::setApplicationName("Barrier");
+	QCoreApplication::setApplicationName("EtherWaver");
 
 	QBarrierApplication app(argc, argv);
 
@@ -79,11 +79,11 @@ int main(int argc, char* argv[])
         // Unfortunately, there's no user-friendly way to allow assistive access
         // to applications that are not in default paths (/Applications),
         // especially if an identically named application already exists in
-        // /Applications). Thus we require Barrier to reside in the /Applications
+        // /Applications). Thus we require EtherWaver to reside in the /Applications
         // folder
 		QMessageBox::information(
-			NULL, "Barrier",
-			"Please drag Barrier to the Applications folder, and open it from there.");
+			NULL, "EtherWaver",
+			"Please drag EtherWaver to the Applications folder, and open it from there.");
 		return 1;
 	}
 
@@ -99,8 +99,8 @@ int main(int argc, char* argv[])
 
     if (QGuiApplication::platformName() == "wayland") {
         QMessageBox::warning(
-        NULL, "Barrier",
-        "You are using wayland session, which is currently not fully supported by Barrier.");
+        NULL, "EtherWaver",
+        "You are using wayland session, which is currently not fully supported by EtherWaver.");
     }
 
 	QSettings settings;
@@ -182,10 +182,10 @@ bool checkMacAssistiveDevices()
 	bool result = AXAPIEnabled();
 	if (!result) {
 		QMessageBox::information(
-			NULL, "Barrier",
+			NULL, "EtherWaver",
 			"Please enable access to assistive devices "
 			"System Preferences -> Security & Privacy -> "
-			"Privacy -> Accessibility, then re-open Barrier.");
+			"Privacy -> Accessibility, then re-open EtherWaver.");
 	}
 	return result;
 

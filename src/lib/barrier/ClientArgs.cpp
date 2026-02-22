@@ -18,6 +18,8 @@
 #include "barrier/ClientArgs.h"
 
 ClientArgs::ClientArgs() :
-    m_yscroll(0)
+    m_yscroll(0),
+    m_uhidEnabled(false),
+    m_uhidName("")
 {
 }

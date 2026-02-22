@@ -28,6 +28,8 @@
 #include "base/EventTypes.h"
 #include "mt/CondVar.h"
 
+#include <memory>
+
 class EventQueueTimer;
 namespace barrier { class Screen; }
 class ServerProxy;
@@ -37,6 +39,7 @@ namespace barrier { class IStream; }
 class IEventQueue;
 class Thread;
 class TCPSocket;
+class IInputBackend;
 
 //! Barrier client
 /*!
@@ -224,4 +227,5 @@ private:
     bool                m_useSecureNetwork;
     ClientArgs            m_args;
     bool                m_enableClipboard;
+    std::unique_ptr<IInputBackend> m_inputBackend;
 };

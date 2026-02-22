@@ -115,8 +115,16 @@ ClientApp::help()
 #  define WINAPI_INFO ""
 #endif
 
+#if defined(__linux__)
+#  define UHID_INFO \
+    "      --uhid=enable        enable Linux uhid input (from Barrier events)\n" \
+    "      --uhid-name <name>   set the uhid device name\n"
+#else
+#  define UHID_INFO ""
+#endif
+
     std::ostringstream buffer;
-    buffer << "Start the barrier client and connect to a remote server component.\n"
+    buffer << "Start the waver client and connect to a remote server component.\n"
            << "\n"
            << "Usage: " << args().m_exename << " [--yscroll <delta>]" <<  WINAPI_ARG << HELP_SYS_ARGS
            << HELP_COMMON_ARGS << " <server-address>\n"
@@ -125,6 +133,7 @@ ClientApp::help()
            << HELP_COMMON_INFO_1 << WINAPI_INFO << HELP_SYS_INFO
            << "      --yscroll <delta>    defines the vertical scrolling delta, which is\n"
            << "                           120 by default.\n"
+           << UHID_INFO
            << HELP_COMMON_INFO_2
            << "\n"
            << "Default options are marked with a *\n"
@@ -141,9 +150,9 @@ const char*
 ClientApp::daemonName() const
 {
 #if SYSAPI_WIN32
-    return "Barrier Client";
+    return "EtherWaver Client";
 #elif SYSAPI_UNIX
-    return "barrierc";
+    return "waverc";
 #endif
 }
 

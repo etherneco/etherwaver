@@ -119,9 +119,9 @@ private:
 
 // configuration file name
 #if SYSAPI_WIN32
-#define USR_CONFIG_NAME "barrier.sgc"
-#define SYS_CONFIG_NAME "barrier.sgc"
+#define USR_CONFIG_NAME "etherwaver.sgc"
+#define SYS_CONFIG_NAME "etherwaver.sgc"
 #elif SYSAPI_UNIX
-#define USR_CONFIG_NAME ".barrier.conf"
-#define SYS_CONFIG_NAME "barrier.conf"
+#define USR_CONFIG_NAME ".etherwaver.conf"
+#define SYS_CONFIG_NAME "etherwaver.conf"
 #endif

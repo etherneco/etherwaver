@@ -77,7 +77,7 @@ static fs::path profile_basedir()
 const fs::path& DataDirectories::profile()
 {
     if (_profile.empty())
-        _profile = profile_basedir() / "barrier";
+        _profile = profile_basedir() / "etherwaver";
     return _profile;
 }
 const fs::path& DataDirectories::profile(const fs::path& path)

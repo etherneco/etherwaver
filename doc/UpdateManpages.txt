@@ -1,10 +1,10 @@
-To recreate the generated part of barrierc manpage use a command like:
-  help2man -N --output=barrierc.1 --name='Barrier Keyboard/Mouse Client' /path/to/barrierc
+To recreate the generated part of waverc manpage use a command like:
+  help2man -N --output=waverc.1 --name='EtherWaver Keyboard/Mouse Client' /path/to/waverc
 
-And for barriers:
-  help2man -N --output=barriers.1 --name='Barrier Keyboard/Mouse Server' /path/to/barriers
+And for wavers:
+  help2man -N --output=wavers.1 --name='EtherWaver Keyboard/Mouse Server' /path/to/wavers
 
 After that manually fixup:
- * replace your home directory with $HOME in barriers.1
+ * replace your home directory with $HOME in wavers.1
  * revert formatting of FILES and COPYRIGHT sections to match formatting of existing version.
  * add note referencing this file for instructions to the first line.

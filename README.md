@@ -1,148 +1,155 @@
-# Barrier
+# Etherwaver
 
-Eliminate the barrier between your machines.
-Find [releases for windows and macOS here](https://github.com/debauchee/barrier/releases).
-Your distro probably already has barrier packaged for it, see [distro specific packages](#distro-specific-packages)
-below for a list. Alternatively, we also provide a [flatpak](https://github.com/flathub/com.github.debauchee.barrier)
-and a [snap](https://snapcraft.io/barrier).
+**Next-generation secure input mesh built on top of Barrier.**
 
-### Contact info:
+Etherwaver extends traditional keyboard & mouse sharing with a modern,
+modular architecture designed for Linux UHID, automation workflows, and
+future Wayland compatibility.
 
-- `#barrier` on LiberaChat IRC network
+> Not just screen sharing --- programmable input orchestration.
 
-#### CI Build Status
+------------------------------------------------------------------------
 
-Master branch overall build status: [![Build Status](https://dev.azure.com/debauchee/Barrier/_apis/build/status/debauchee.barrier?branchName=master)](https://dev.azure.com/debauchee/Barrier/_build/latest?definitionId=1&branchName=master)
+## Why Etherwaver?
 
-|Platform       |Build Status|
-|            --:|:--         |
-|Linux          |[![Build Status](https://dev.azure.com/debauchee/Barrier/_apis/build/status/debauchee.barrier?branchName=master&jobName=Linux%20Build)](https://dev.azure.com/debauchee/Barrier/_build/latest?definitionId=1&branchName=master)|
-|Mac            |[![Build Status](https://dev.azure.com/debauchee/Barrier/_apis/build/status/debauchee.barrier?branchName=master&jobName=Mac%20Build)](https://dev.azure.com/debauchee/Barrier/_build/latest?definitionId=1&branchName=master)|
-|Windows Debug  |[![Build Status](https://dev.azure.com/debauchee/Barrier/_apis/build/status/debauchee.barrier?branchName=master&jobName=Windows%20Build&configuration=Windows%20Build%20Debug)](https://dev.azure.com/debauchee/Barrier/_build/latest?definitionId=1&branchName=master)|
-|Windows Release|[![Build Status](https://dev.azure.com/debauchee/Barrier/_apis/build/status/debauchee.barrier?branchName=master&jobName=Windows%20Build&configuration=Windows%20Build%20Release%20with%20Release%20Installer)](https://dev.azure.com/debauchee/Barrier/_build/latest?definitionId=1&branchName=master)|
-|Snap           |[![Snap Status](https://build.snapcraft.io/badge/debauchee/barrier.svg)](https://build.snapcraft.io/user/debauchee/barrier)|
+Barrier was originally designed for X11 desktop environments. Modern
+Linux systems (especially Wayland-based) require a different approach.
 
-Our CI Builds are provided by Microsoft Azure Pipelines, Flathub, and Canonical.
+Etherwaver introduces:
 
-### What is it?
+-   Native Linux UHID virtual device backend
+-   Modular input injection layer
+-   Experimental Host Control API
+-   Infrastructure-friendly architecture
+-   Headless-ready operation
 
-Barrier is software that mimics the functionality of a KVM switch, which historically would allow you to use a single keyboard and mouse to control multiple computers by physically turning a dial on the box to switch the machine you're controlling at any given moment. Barrier does this in software, allowing you to tell it which machine to control by moving your mouse to the edge of the screen, or by using a keypress to switch focus to a different system.
+------------------------------------------------------------------------
 
-Barrier was forked from Symless's Synergy 1.9 codebase. Synergy was a commercialized reimplementation of the original CosmoSynergy written by Chris Schoeneman.
+## Architecture
 
-At the moment, barrier is not compatible with synergy. Barrier needs to be installed on all machines that will share keyboard and mouse.
+Etherwaver introduces a pluggable input backend abstraction layer:
 
-### What's different?
+IInputBackend\
+├── X11Backend\
+├── UHIDBackend\
+└── (planned) WaylandBackend
 
-Whereas Synergy has moved beyond its goals from the 1.x era, Barrier aims to maintain that simplicity.
-Barrier will let you use your keyboard and mouse from one computer to control one or more other computers.
-Clipboard sharing is supported.
-That's it.
+Design Goals:
 
-### Project goals
+-   Decouple input injection from networking layer
+-   Support virtual HID devices (UHID)
+-   Improve Wayland compatibility
+-   Enable API-driven screen switching
+-   Maintain cross-platform support
 
-Hassle-free reliability. We are users, too. Barrier was created so that we could solve the issues we had with synergy and then share these fixes with other users.
+------------------------------------------------------------------------
 
-Compatibility. We use more than one operating system and you probably do, too. Windows, OSX, Linux, FreeBSD... Barrier should "just work". We will also have our eye on Wayland when the time comes.
+## Features
 
-Communication. Everything we do is in the open. Our issue tracker will let you see if others are having the same problem you're having and will allow you to add additional information. You will also be able to see when progress is made and how the issue gets resolved.
+✔ Secure keyboard & mouse sharing\
+✔ Cross-platform (Linux / Windows / macOS)\
+✔ Linux UHID virtual device backend\
+✔ Modular input injection layer\
+✔ Headless-ready architecture\
+✔ Experimental local Control API
 
-### Usage
+------------------------------------------------------------------------
 
-Install and run barrier on each machine that will be sharing.
-On the machine with the keyboard and mouse, make it the server.
+## Control API (Experimental)
 
-Click the "Configure server" button and drag a new screen onto the grid for each client machine.
-Ensure the "screen name" matches exactly (case-sensitive) for each configured screen -- the clients' barrier windows will tell you their screen names (just above the server IP).
+Etherwaver exposes a local HTTP API for automation and scripting.
 
-On the client(s), put in the server machine's IP address (or use Bonjour/auto configuration when prompted) and "start" them.
-You should see `Barrier is running` on both server and clients.
-You should now be able to move the mouse between all the screens as if they were the same machine.
+Example:
 
-Note that if the keyboard's Scroll Lock is active then this will prevent the mouse from switching screens.
+GET /api/host
 
-### Contact & support
+POST /api/switch { "screen": "workstation-1" }
 
-Please be aware that the *only* way to draw our attention to a bug is to create a new issue in [the issue tracker](https://github.com/debauchee/barrier/issues). Write a clear, concise, detailed report and you will get a clear, concise, detailed response. Priority is always given to issues that affect a wider range of users.
+Use cases:
 
-For short and simple questions or to just say hello find us on the LiberaChat IRC network in the #barrier channel.
+-   Automated screen switching
+-   Integration with scripts
+-   DevOps workflows
+-   Remote orchestration
 
-### Contributions
+Authentication and token-based access control (planned).
 
-At this time we are looking for developers to help fix the issues found in the issue tracker.
-Submit pull requests once you've polished up your patch and we'll review and possibly merge it.
+------------------------------------------------------------------------
 
-Most pull requests will need to include a release note.
-See docs/newsfragments/README.md for documentation of how to do that.
+## Linux UHID Backend
 
-## Distro specific packages
+Instead of relying solely on XTest injection, Etherwaver can create
+virtual HID devices using Linux UHID.
 
-While not a comprehensive list, repology provides a decent list of distro
-specific packages.
+Advantages:
 
-[![Packaging status](https://repology.org/badge/vertical-allrepos/barrier.svg)](https://repology.org/project/barrier/versions)
+-   Works closer to kernel input layer
+-   Better Wayland compatibility
+-   More realistic device emulation
+-   Cleaner permission model for advanced setups
 
-## FAQ - Frequently Asked Questions
+------------------------------------------------------------------------
 
-**Q: Does drag and drop work on linux?**
+## Build Instructions
 
-> A: No *(see [#855](https://github.com/debauchee/barrier/issues/855) if you'd like to change that)*
+Requirements (Linux):
 
+-   cmake
+-   libx11-dev
+-   libxrandr-dev
+-   libxi-dev
+-   libudev-dev
+-   build-essential
 
-**Q: What OSes are supported?**
+Build:
 
-> A: The [most recent release](https://github.com/debauchee/barrier/releases/latest) of Barrier is known to work on:
->  - Windows 7, 8, 8.1, 10, and 11
->  - macOS *(previously known as OS X or Mac OS X)*  
->    - _The current GUI does **not** work on OS versions prior to macOS 10.12 Sierra (but see the related answer below)_
->  - Linux
->  - FreeBSD
->  - OpenBSD
+``` bash
+git clone https://github.com/etherneco/etherwaver.git
+cd etherwaver
+mkdir build
+cd build
+cmake ..
+make
+```
 
+------------------------------------------------------------------------
 
-**Q: Are 32-bit versions of Windows supported?**
+## Roadmap
 
-> A: No
+-   [ ] Stable UHID backend
+-   [ ] Wayland-native backend
+-   [ ] Token-based API authentication
+-   [ ] Remote configuration mode
+-   [ ] Plugin-based backend loading
+-   [ ] Binary renaming to `waver`
 
+------------------------------------------------------------------------
 
-__Q: Is it possible to use Barrier on Mac OS X / OS X versions prior to 10.12?__
+## Relationship to Barrier
 
-> A: Not officially.
->   - For OS X 10.10 Yosemite and later:
->     - [Barrier v2.1.0](https://github.com/debauchee/barrier/releases/tag/v2.1.0) or earlier _may_ work.
->   - For Mac OS X 10.9 Mavericks _(and perhaps earlier)_:
->     1. the command-line portions of the [current release](https://github.com/debauchee/barrier/releases/latest) _should_ run fine.
->     2. The GUI will _not_ run, as that OS version does not include Apple's *Metal* framework.
->         - _(For a GUI workaround for Mac OS X 10.9, see the [discussion at issue #544](https://github.com/debauchee/barrier/issues/544))_
+Etherwaver is a fork of Barrier, reimagined for modern Linux input
+systems and automation environments.
 
-> Note: Only versions [v2.3.4](https://github.com/debauchee/barrier/releases/tag/v2.3.4) and [later](https://github.com/debauchee/barrier/releases/latest) of Barrier can be supported by this project.
->  - Anyone using an earlier version is advised to upgrade due to recently-addressed security vulnerabilities *(and other bug fixes)*. 
->    - This is especially important for computers accessible from the public Internet *(or from other shared/untrusted networks, such as when using shared WiFi)*.
+It preserves the core networking logic while introducing:
 
+-   Backend modularization
+-   UHID injection support
+-   API layer
+-   Future Wayland focus
 
-**Q: How do I load my configuration on startup?**
+------------------------------------------------------------------------
 
-> A: Start the binary with the argument `--config <path_to_saved_configuration>`
+## Motivation
 
+Etherwaver was created to address limitations of traditional
+input-sharing software in modern Linux environments.
 
-**Q: After loading my configuration on the client the field 'Server IP' is still empty!**
+As Wayland adoption grows and infrastructure-heavy setups become common,
+input sharing must evolve beyond X11-based injection.
 
-> A: Edit your configuration to include the server's ip address manually with
-> 
->```
->(...)
->
->section: options
->    serverhostname=<AAA.BBB.CCC.DDD>
->```
+Etherwaver is an attempt to build that next layer.
 
-**Q: Are there any other significant limitations with the current version of Barrier?**
+------------------------------------------------------------------------
 
-> A: Currently:
->    - Barrier currently has limited UTF-8 support; issues have been reported with processing various languages.
->      - *(see [#860](https://github.com/debauchee/barrier/issues/860))*
->    - There is interest in future support for the Wayland compositor/display server protocol *([official site](https://wayland.freedesktop.org/) | [Wikipedia article](https://en.wikipedia.org/wiki/Wayland_(display_server_protocol)))* on Linux.
->      - As of late 2021, there is no expected completion date for *Wayland* support.
->      - *(see [#109](https://github.com/debauchee/barrier/issues/109) and [#1251](https://github.com/debauchee/barrier/issues/1251) for status or to volunteer your talents)*
->
-> The complete list of open issues can be found in the ['Issues' tab on GitHub](https://github.com/debauchee/barrier/issues?q=is%3Aissue+is%3Aopen). Help is always appreciated.
+Website: https://etherwaver.com\
+Maintained by: Etherneco Ltd, London, UK

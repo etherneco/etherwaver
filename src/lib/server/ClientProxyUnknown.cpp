@@ -39,12 +39,13 @@
 // ClientProxyUnknown
 //
 
-ClientProxyUnknown::ClientProxyUnknown(barrier::IStream* stream, double timeout, Server* server, IEventQueue* events) :
+ClientProxyUnknown::ClientProxyUnknown(const std::string& current_ip, barrier::IStream* stream, double timeout, Server* server, IEventQueue* events) :
     m_stream(stream),
     m_proxy(NULL),
     m_ready(false),
     m_server(server),
-    m_events(events)
+    m_events(events),
+    m_current_ip(current_ip)
 {
     assert(m_server != NULL);
 
@@ -182,6 +183,8 @@ ClientProxyUnknown::handleData(const Event&, void*)
     LOG((CLOG_DEBUG1 "parsing hello reply"));
 
     std::string name("<unknown>");
+    std::string current_ip(m_current_ip);
+    
     try {
         // limit the maximum length of the hello
         UInt32 n = m_stream->getSize();
@@ -211,31 +214,31 @@ ClientProxyUnknown::handleData(const Event&, void*)
         if (major == 1) {
             switch (minor) {
             case 0:
-                m_proxy = new ClientProxy1_0(name, m_stream, m_events);
+                m_proxy = new ClientProxy1_0(name, current_ip, m_stream, m_events);
                 break;
 
             case 1:
-                m_proxy = new ClientProxy1_1(name, m_stream, m_events);
+                m_proxy = new ClientProxy1_1(name, current_ip, m_stream, m_events);
                 break;
 
             case 2:
-                m_proxy = new ClientProxy1_2(name, m_stream, m_events);
+                m_proxy = new ClientProxy1_2(name, current_ip,  m_stream, m_events);
                 break;
 
             case 3:
-                m_proxy = new ClientProxy1_3(name, m_stream, m_events);
+                m_proxy = new ClientProxy1_3(name, current_ip, m_stream, m_events);
                 break;
 
             case 4:
-                m_proxy = new ClientProxy1_4(name, m_stream, m_server, m_events);
+                m_proxy = new ClientProxy1_4(name, current_ip, m_stream, m_server, m_events);
                 break;
 
             case 5:
-                m_proxy = new ClientProxy1_5(name, m_stream, m_server, m_events);
+                m_proxy = new ClientProxy1_5(name, current_ip, m_stream, m_server, m_events);
                 break;
 
             case 6:
-                m_proxy = new ClientProxy1_6(name, m_stream, m_server, m_events);
+                m_proxy = new ClientProxy1_6(name, current_ip, m_stream, m_server, m_events);
                 break;
             }
         }

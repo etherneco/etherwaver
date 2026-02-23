@@ -34,11 +34,11 @@ public:
     /*!
     \c name is the name of the server and \p screen is primary screen.
     */
-    PrimaryClient(const std::string& name, barrier::Screen* screen);
+    PrimaryClient(const std::string& name, const std::string& current_ip, barrier::Screen* screen);
     ~PrimaryClient();
 
 #ifdef BARRIER_TEST_ENV
-    PrimaryClient() : BaseClientProxy("") { }
+    PrimaryClient() : BaseClientProxy("", "") { }
 #endif
 
     //! @name manipulators

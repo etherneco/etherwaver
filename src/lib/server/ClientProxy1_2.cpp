@@ -25,9 +25,9 @@
 // ClientProxy1_1
 //
 
-ClientProxy1_2::ClientProxy1_2(const std::string& name, barrier::IStream* stream,
+ClientProxy1_2::ClientProxy1_2(const std::string& name, const std::string& current_ip, barrier::IStream* stream,
                                IEventQueue* events) :
-    ClientProxy1_1(name, stream, events)
+    ClientProxy1_1(name, current_ip, stream, events)
 {
     // do nothing
 }

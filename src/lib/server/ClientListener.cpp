@@ -25,10 +25,14 @@
 #include "net/IListenSocket.h"
 #include "net/ISocketFactory.h"
 #include "net/XSocket.h"
+#include "net/TCPSocket.h"
 #include "base/Log.h"
 #include "base/IEventQueue.h"
 #include "base/TMethodEventJob.h"
 
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 //
 // ClientListener
 //
@@ -121,16 +125,30 @@ ClientListener::getNextClient()
 }
 
 void
-ClientListener::handleClientConnecting(const Event&, void*)
+ClientListener::handleClientConnecting(const Event&, void*data)
 {
     // accept client connection
-    IDataSocket* socket = m_listen->accept();
-
+ 
+   IDataSocket* socket = m_listen->accept();
+    
     if (socket == NULL) {
         return;
     }
 
+    TCPSocket* tcp = dynamic_cast<TCPSocket*>(socket);
+    if (tcp) {
+        
+        LOG((CLOG_NOTE "accepted client connection from %s", tcp->getCurrentIp()));
+
+    }    
+
+
+
+    
+
+
     m_clientSockets.insert(socket);
+
 
     m_events->adoptHandler(m_events->forClientListener().accepted(),
                 socket->getEventTarget(),
@@ -151,13 +169,20 @@ ClientListener::handleClientAccepted(const Event&, void* vsocket)
     LOG((CLOG_NOTE "accepted client connection"));
 
     IDataSocket* socket = static_cast<IDataSocket*>(vsocket);
+    TCPSocket* tcp = dynamic_cast<TCPSocket*>(socket);
+    std::string ip = "";
+    if (tcp) {
+        ip = tcp->getCurrentIp();
+        LOG((CLOG_NOTE "accepted client connection from %s", tcp->getCurrentIp()));
+
+    }    
 
     // filter socket messages, including a packetizing filter
     barrier::IStream* stream = new PacketStreamFilter(m_events, socket, false);
     assert(m_server != NULL);
 
     // create proxy for unknown client
-    ClientProxyUnknown* client = new ClientProxyUnknown(stream, 30.0, m_server, m_events);
+    ClientProxyUnknown* client = new ClientProxyUnknown(ip, stream, 30.0, m_server, m_events);
 
     m_newClients.insert(client);
 

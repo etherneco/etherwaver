@@ -1,5 +1,5 @@
 /*
- * barrier -- mouse and keyboard sharing utility
+  barrier -- mouse and keyboard sharing utility
  * Copyright (C) 2012-2016 Symless Ltd.
  * Copyright (C) 2002 Chris Schoeneman
  *
@@ -18,16 +18,16 @@
 
 #include "server/PrimaryClient.h"
 
-#include "barrier/Screen.h"
-#include "barrier/Clipboard.h"
+#include"barrier/Screen.h"
+#include"barrier/Clipboard.h"
 #include "base/Log.h"
 
 //
 // PrimaryClient
 //
 
-PrimaryClient::PrimaryClient(const std::string& name, barrier::Screen* screen) :
-    BaseClientProxy(name),
+PrimaryClient::PrimaryClient(const std::string& name, const std::string& current_ip, barrier::Screen* screen) :
+    BaseClientProxy(name, current_ip),
     m_screen(screen),
     m_fakeInputCount(0)
 {

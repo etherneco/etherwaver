@@ -1,3 +1,4 @@
+#include <cstdint>
 /*
     barrier -- mouse and keyboard sharing utility
     Copyright (C) Barrier contributors
@@ -18,7 +19,6 @@
 #ifndef BARRIER_LIB_NET_FINGERPRINT_DATA_H
 #define BARRIER_LIB_NET_FINGERPRINT_DATA_H
 
-#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -32,7 +32,7 @@ enum FingerprintType {
 
 struct FingerprintData {
     std::string algorithm;
-    std::vector<std::uint8_t> data;
+    std::vector<uint8_t> data;
 
     bool valid() const { return !algorithm.empty(); }
 

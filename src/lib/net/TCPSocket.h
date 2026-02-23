@@ -37,8 +37,10 @@ A data socket using TCP.
 */
 class TCPSocket : public IDataSocket {
 public:
+
     TCPSocket(IEventQueue* events, SocketMultiplexer* socketMultiplexer, IArchNetwork::EAddressFamily family);
     TCPSocket(IEventQueue* events, SocketMultiplexer* socketMultiplexer, ArchSocket socket);
+    TCPSocket(IEventQueue* events, SocketMultiplexer* socketMultiplexer, ArchSocket socket, ArchNetAddress addr);
     virtual ~TCPSocket();
 
     // ISocket overrides
@@ -62,7 +64,7 @@ public:
 
     virtual std::unique_ptr<ISocketMultiplexerJob> newJob();
 
-protected:
+public:
     enum EJobResult {
         kBreak = -1,    //!< Break the Job chain
         kRetry,            //!< Retry the same job
@@ -83,6 +85,10 @@ protected:
 
     Mutex&                getMutex() { return m_mutex; }
 
+    std::string getCurrentIp() const { return m_remoteIp; }
+    int getCurrentPort() const { return m_remotePort; }
+
+
     void                sendEvent(Event::Type);
     void                discardWrittenData(int bytesWrote);
 
@@ -99,6 +105,8 @@ private:
     MultiplexerJobStatus serviceConnected(ISocketMultiplexerJob*, bool, bool, bool);
 
 protected:
+    std::string m_remoteIp;
+    int m_remotePort;
     bool                m_readable;
     bool                m_writable;
     bool                m_connected;

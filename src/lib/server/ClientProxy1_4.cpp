@@ -31,9 +31,9 @@
 // ClientProxy1_4
 //
 
-ClientProxy1_4::ClientProxy1_4(const std::string& name, barrier::IStream* stream, Server* server,
+ClientProxy1_4::ClientProxy1_4(const std::string& name,  const std::string& current_ip, barrier::IStream* stream, Server* server,
                                IEventQueue* events) :
-    ClientProxy1_3(name, stream, events), m_server(server)
+    ClientProxy1_3(name, current_ip, stream, events), m_server(server)
 {
     assert(m_server != NULL);
 }

@@ -22,8 +22,9 @@
 // BaseClientProxy
 //
 
-BaseClientProxy::BaseClientProxy(const std::string& name) :
+BaseClientProxy::BaseClientProxy(const std::string& name, const std::string& current_ip) :
     m_name(name),
+    m_current_ip(current_ip),
     m_x(0),
     m_y(0)
 {
@@ -52,4 +53,8 @@ BaseClientProxy::getJumpCursorPos(SInt32& x, SInt32& y) const
 std::string BaseClientProxy::getName() const
 {
     return m_name;
+}
+std::string BaseClientProxy::getCurrentIp() const
+{
+    return m_current_ip;
 }

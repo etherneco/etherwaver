@@ -30,9 +30,9 @@
 // ClientProxy1_3
 //
 
-ClientProxy1_3::ClientProxy1_3(const std::string& name, barrier::IStream* stream,
+ClientProxy1_3::ClientProxy1_3(const std::string& name, const std::string& current_ip, barrier::IStream* stream,
                                IEventQueue* events) :
-    ClientProxy1_2(name, stream, events),
+    ClientProxy1_2(name, current_ip, stream, events),
     m_keepAliveRate(kKeepAliveRate),
     m_keepAliveTimer(NULL),
     m_events(events)

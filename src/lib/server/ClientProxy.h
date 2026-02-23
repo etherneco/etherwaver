@@ -30,7 +30,7 @@ public:
     /*!
     \c name is the name of the client.
     */
-    ClientProxy(const std::string& name, barrier::IStream* adoptedStream);
+    ClientProxy(const std::string& name, const std::string& current_ip, barrier::IStream* adoptedStream);
     ~ClientProxy();
 
     //! @name manipulators

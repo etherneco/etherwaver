@@ -32,6 +32,13 @@
 #include "common/stdmap.h"
 #include "common/stdset.h"
 #include "common/stdvector.h"
+#include "net/NetworkAddress.h"
+#include "net/TCPSocket.h"
+#include <thread>
+#include <mutex>
+#include <atomic>
+#include <string>
+
 
 class BaseClientProxy;
 class EventQueueTimer;
@@ -48,12 +55,18 @@ This class implements the top-level server algorithms for barrier.
 */
 class Server : public INode {
 public:
+    std::map<IDataSocket*, std::string> m_clientIps;
+    String getCurrentIp();
+    void httpLoop();
+
+
     //! Lock cursor to screen data
     class LockCursorToScreenInfo {
     public:
         enum State { kOff, kOn, kToggle };
 
         static LockCursorToScreenInfo* alloc(State state = kToggle);
+
 
     public:
         State            m_state;
@@ -481,4 +494,11 @@ private:
 
     ClientListener*        m_clientListener;
     ServerArgs            m_args;
+
+    ArchSocket m_httpListener;
+    std::thread m_httpThread;
+    std::atomic<bool> m_running;
+    std::mutex m_mutex;
+    String m_currentHost;
+    String m_current_ip;
 };

@@ -30,6 +30,12 @@
 #include "arch/XArch.h"
 #include "base/IEventQueue.h"
 
+
+#include <arpa/inet.h>   // inet_ntoa, ntohs
+#include <netinet/in.h>  // sockaddr_in
+#include <sys/socket.h>  // podstawowe definicje socketów
+#include "base/Log.h"
+
 //
 // TCPListenSocket
 //
@@ -66,6 +72,7 @@ TCPListenSocket::bind(const NetworkAddress& addr)
 {
     try {
         Lock lock(m_mutex);
+
         ARCH->setReuseAddrOnSocket(m_socket, true);
         ARCH->bindSocket(m_socket, addr.getAddress());
         ARCH->listenOnSocket(m_socket);
@@ -113,7 +120,24 @@ TCPListenSocket::accept()
 {
     IDataSocket* socket = NULL;
     try {
-        socket = new TCPSocket(m_events, m_socketMultiplexer, ARCH->acceptSocket(m_socket, NULL));
+
+        ArchNetAddress addr;
+        ArchSocket sock = ARCH->acceptSocket(m_socket, &addr);
+
+        // konwersja IP
+        std::string ip = ARCH->addrToString(addr);
+int port = ARCH->getAddrPort(addr);
+if(ip.rfind("::ffff:", 0)==0){
+   ip = ip.substr(7);
+}
+LOG((CLOG_NOTE "client connected from %s:%d", ip.c_str(), port));
+
+// przekazanie socketu dalej
+socket = new TCPSocket(m_events, m_socketMultiplexer, sock, addr);
+
+
+//        socket = new TCPSocket(m_events, m_socketMultiplexer, ARCH->acceptSocket(m_socket, null));
+
         if (socket != NULL) {
             setListeningJob();
         }

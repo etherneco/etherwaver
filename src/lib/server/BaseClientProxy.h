@@ -28,7 +28,7 @@ public:
     /*!
     \c name is the name of the client.
     */
-    BaseClientProxy(const std::string& name);
+    BaseClientProxy(const std::string& name, const std::string& current_ip);
     ~BaseClientProxy();
 
     //! @name manipulators
@@ -89,10 +89,13 @@ public:
                             size_t size) = 0;
     virtual void        fileChunkSending(UInt8 mark, char* data, size_t dataSize) = 0;
     virtual std::string getName() const;
+    virtual std::string getCurrentIp() const;
+    
     virtual barrier::IStream*
                         getStream() const = 0;
 
 private:
     std::string m_name;
+    std::string m_current_ip;
     SInt32                m_x, m_y;
 };

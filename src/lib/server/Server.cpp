@@ -36,6 +36,7 @@
 #include "net/TCPSocket.h"
 #include "net/IDataSocket.h"
 #include "net/IListenSocket.h"
+#include "arch/IArchNetwork.h"
 #include "net/XSocket.h"
 #include "mt/Thread.h"
 #include "arch/Arch.h"
@@ -43,7 +44,12 @@
 #include "base/Log.h"
 #include "base/TMethodEventJob.h"
 
+#include "net/IDataSocket.h"
+#include "arch/IArchNetwork.h"
+
 #include <cstring>
+#include <string>   // Dla std::string i std::to_string
+#include <typeinfo> // Dla dynamic_cast (opcjonalnie, jeśli potrzeba)
 #include <cstdlib>
 #include <sstream>
 #include <fstream>
@@ -213,6 +219,27 @@ Server::Server(
 		m_lockedToScreen = true;
 	}
 
+// Initialize current host to server's own name
+    m_currentHost = m_primaryClient->getName();
+
+    // Start the HTTP endpoint
+    try {
+        NetworkAddress addr("0.0.0.0", 24802);  // Listen on all interfaces, port 24801
+        addr.resolve();
+
+    
+	m_httpListener = ARCH->newSocket(IArchNetwork::kINET, IArchNetwork::kSTREAM);
+        ARCH->bindSocket(m_httpListener, addr.getAddress());
+        ARCH->listenOnSocket(m_httpListener);  // Backlog 5
+
+        m_running = true;
+        m_httpThread = std::thread(&Server::httpLoop, this);
+
+    } catch (XBase& e) {
+        LOG((CLOG_ERR "Failed to start HTTP endpoint: %s", e.what()));
+    }
+
+
 }
 
 Server::~Server()
@@ -266,6 +293,12 @@ Server::~Server()
 	// disable and disconnect primary client
 	m_primaryClient->disable();
 	removeClient(m_primaryClient);
+
+    if (m_httpListener) {
+        m_running = false;
+        ARCH->closeSocket(m_httpListener);
+        m_httpThread.join();
+    }
 }
 
 bool
@@ -499,6 +532,11 @@ Server::switchScreen(BaseClientProxy* dst,
 
 		// cut over
 		m_active = dst;
+		{ 
+			std::lock_guard<std::mutex> lock(m_mutex); 
+			m_currentHost = dst->getName(); 
+			m_current_ip = dst->getCurrentIp();
+		}
 
 		// increment enter sequence number
 		++m_seqNum;
@@ -2412,4 +2450,45 @@ Server::dragInfoReceived(UInt32 fileNum, std::string content)
 	DragInformation::parseDragInfo(m_fakeDragFileList, fileNum, content);
 
 	m_screen->startDraggingFiles(m_fakeDragFileList);
+}
+
+void Server::httpLoop()
+{
+    while (m_running) {
+        ArchSocket socket = ARCH->acceptSocket(m_httpListener, nullptr);
+
+        if (!socket) {
+            // prevent 100% CPU when no clients connect
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
+
+        try {
+            std::string current;
+            std::string currentIp;
+
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                current = m_currentHost;
+				currentIp = m_current_ip;
+
+            }
+
+	    std::string json = "{\"server\": {\"current\":\"" + current + "\", \"ip\":\"" + currentIp + "\"}}";
+            std::string response =
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: application/json\r\n"
+                "Content-Length: " + std::to_string(json.size()) + "\r\n"
+                "Connection: close\r\n\r\n" + json;
+
+            ARCH->writeSocket(socket,
+                              (const UInt8*)response.data(),
+                              response.size());
+        }
+        catch (...) {
+            // Ignore errors
+        }
+
+        ARCH->closeSocket(socket);
+    }
 }

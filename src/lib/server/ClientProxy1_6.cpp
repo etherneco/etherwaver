@@ -29,9 +29,9 @@
 // ClientProxy1_6
 //
 
-ClientProxy1_6::ClientProxy1_6(const std::string& name, barrier::IStream* stream, Server* server,
+ClientProxy1_6::ClientProxy1_6(const std::string& name, const std::string& current_ip, barrier::IStream* stream, Server* server,
                                IEventQueue* events) :
-    ClientProxy1_5(name, stream, server, events),
+    ClientProxy1_5(name, current_ip, stream, server, events),
     m_events(events)
 {
     m_events->adoptHandler(m_events->forClipboard().clipboardSending(),

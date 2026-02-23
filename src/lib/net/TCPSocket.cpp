@@ -49,7 +49,7 @@ TCPSocket::TCPSocket(IEventQueue* events, SocketMultiplexer* socketMultiplexer, 
         throw XSocketCreate(e.what());
     }
 
-    LOG((CLOG_DEBUG "Opening new socket: %08X", m_socket));
+    LOG((CLOG_DEBUG "Opening2 new socket: %08X", m_socket));
 
     init();
 }
@@ -64,7 +64,30 @@ TCPSocket::TCPSocket(IEventQueue* events, SocketMultiplexer* socketMultiplexer, 
 {
     assert(m_socket != NULL);
 
-    LOG((CLOG_DEBUG "Opening new socket: %08X", m_socket));
+    LOG((CLOG_DEBUG "Opening1 new socket: %08X", m_socket));
+
+    // socket starts in connected state
+    init();
+    onConnected();
+    setJob(newJob());
+}
+
+
+
+TCPSocket::TCPSocket(IEventQueue* events, SocketMultiplexer* socketMultiplexer, ArchSocket socket, ArchNetAddress addr) :
+    IDataSocket(events),
+    m_events(events),
+    m_mutex(),
+    m_socket(socket),
+    m_flushed(&m_mutex, true),
+    m_socketMultiplexer(socketMultiplexer)
+{
+    assert(m_socket != NULL);
+
+    LOG((CLOG_DEBUG "Opening1 new socket: %08X", m_socket));
+    m_remoteIp = ARCH->addrToString(addr);
+    if (m_remoteIp.rfind("::ffff:", 0) == 0) m_remoteIp = m_remoteIp.substr(7);
+    m_remotePort = ARCH->getAddrPort(addr);
 
     // socket starts in connected state
     init();
@@ -284,7 +307,10 @@ TCPSocket::connect(const NetworkAddress& addr)
             return;
         }
 
-        try {
+        try
+        
+        {
+             LOG((CLOG_NOTE "Try Client connected from %s", addr.getAddress()));
             if (ARCH->connectSocket(m_socket, addr.getAddress())) {
                 sendEvent(m_events->forIDataSocket().connected());
                 onConnected();

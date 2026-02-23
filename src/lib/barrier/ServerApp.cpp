@@ -17,6 +17,9 @@
  */
 
 #include "barrier/ServerApp.h"
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <arpa/inet.h>
 
 #include "server/Server.h"
 #include "server/ClientListener.h"
@@ -137,7 +140,7 @@ ServerApp::help()
                             barrier::fs::u8path(SYS_CONFIG_NAME)).u8string();
 
     std::ostringstream buffer;
-    buffer << "Start the waver server component. The server shares the keyboard &\n"
+    buffer << "Start the barrier server component. The server shares the keyboard &\n"
            << "mouse of the local machine with the connected clients based on the\n"
            << "configuration file.\n"
            << "\n"
@@ -621,11 +624,38 @@ ServerApp::createScreen()
 #endif
 }
 
+std::string getLocalIp()
+{
+    struct ifaddrs *ifaddr, *ifa;
+    if (getifaddrs(&ifaddr) == -1)
+        return "0.0.0.0";
+
+    char ip[INET_ADDRSTRLEN];
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL) continue;
+
+        if (ifa->ifa_addr->sa_family == AF_INET &&
+            !(ifa->ifa_flags & IFF_LOOPBACK)) {
+
+            inet_ntop(AF_INET,
+                      &((struct sockaddr_in*)ifa->ifa_addr)->sin_addr,
+                      ip,
+                      sizeof(ip));
+
+            freeifaddrs(ifaddr);
+            return ip;
+        }
+    }
+
+    freeifaddrs(ifaddr);
+    return "0.0.0.0";
+}
+
 PrimaryClient*
 ServerApp::openPrimaryClient(const String& name, barrier::Screen* screen)
 {
     LOG((CLOG_DEBUG1 "creating primary screen"));
-    return new PrimaryClient(name, screen);
+    return new PrimaryClient(name, getLocalIp(), screen);
 
 }
 
@@ -895,9 +925,9 @@ const char*
 ServerApp::daemonName() const
 {
 #if SYSAPI_WIN32
-    return "EtherWaver Server";
+    return "Barrier Server";
 #elif SYSAPI_UNIX
-    return "wavers";
+    return "barriers";
 #endif
 }
 

@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <string> 
 #include "base/Event.h"
 #include "base/EventTypes.h"
 
@@ -29,7 +30,7 @@ class IEventQueue;
 
 class ClientProxyUnknown {
 public:
-    ClientProxyUnknown(barrier::IStream* stream, double timeout, Server* server, IEventQueue* events);
+    ClientProxyUnknown(const std::string& current_ip, barrier::IStream* stream, double timeout, Server* server, IEventQueue* events);
     ~ClientProxyUnknown();
 
     //! @name manipulators
@@ -62,6 +63,7 @@ private:
     void                handleReady(const Event&, void*);
 
 private:
+    std::string m_current_ip;
     barrier::IStream*    m_stream;
     EventQueueTimer*    m_timer;
     ClientProxy*        m_proxy;

@@ -44,6 +44,7 @@
 #include <Shlobj.h>
 #include <comutil.h>
 #include <algorithm>
+#include <sstream>
 
 //
 // add backwards compatible multihead support (and suppress bogus warning).
@@ -79,6 +80,33 @@
 #if !defined(PBT_APMRESUMEAUTOMATIC)
 #define PBT_APMRESUMEAUTOMATIC    0x0012
 #endif
+
+namespace {
+
+BOOL CALLBACK
+collectMonitorRects(HMONITOR monitor, HDC, LPRECT, LPARAM userData)
+{
+    std::vector<ClientScreenInfo>* screens =
+        reinterpret_cast<std::vector<ClientScreenInfo>*>(userData);
+    MONITORINFOEX info;
+    info.cbSize = sizeof(info);
+    if (!GetMonitorInfo(monitor, &info)) {
+        return TRUE;
+    }
+
+    const RECT& rect = info.rcMonitor;
+    std::ostringstream id;
+    id << "monitor-" << reinterpret_cast<std::size_t>(monitor);
+    screens->push_back(ClientScreenInfo(
+        id.str(),
+        rect.left,
+        rect.top,
+        rect.right - rect.left,
+        rect.bottom - rect.top));
+    return TRUE;
+}
+
+} // namespace
 
 //
 // MSWindowsScreen
@@ -506,6 +534,19 @@ MSWindowsScreen::getShape(SInt32& x, SInt32& y, SInt32& w, SInt32& h) const
     y = m_y;
     w = m_w;
     h = m_h;
+}
+
+void
+MSWindowsScreen::getScreens(std::vector<ClientScreenInfo>& screens) const
+{
+    screens.clear();
+    EnumDisplayMonitors(NULL, NULL, &collectMonitorRects,
+                        reinterpret_cast<LPARAM>(&screens));
+    if (!screens.empty()) {
+        return;
+    }
+
+    screens.push_back(ClientScreenInfo("screen0", m_x, m_y, m_w, m_h));
 }
 
 void

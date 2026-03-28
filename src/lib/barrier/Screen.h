@@ -300,6 +300,7 @@ public:
     virtual bool        getClipboard(ClipboardID id, IClipboard*) const;
     virtual void        getShape(SInt32& x, SInt32& y,
                             SInt32& width, SInt32& height) const;
+    virtual void        getScreens(std::vector<ClientScreenInfo>& screens) const;
     virtual void        getCursorPos(SInt32& x, SInt32& y) const;
 
     IPlatformScreen*    getPlatformScreen() { return m_screen; }

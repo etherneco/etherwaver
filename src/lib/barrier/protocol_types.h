@@ -21,6 +21,7 @@
 #include "base/EventTypes.h"
 
 #include <cstdint>
+#include <string>
 
 // protocol version number
 // 1.0:  initial protocol
@@ -31,9 +32,10 @@
 // 1.4:  adds crypto support
 // 1.5:  adds file transfer and removes home brew crypto
 // 1.6:  adds clipboard streaming
+// 1.7:  adds per-host screen list reporting
 // NOTE: with new version, barrier minor version should increment
 static const SInt16        kProtocolMajorVersion = 1;
-static const SInt16        kProtocolMinorVersion = 6;
+static const SInt16        kProtocolMinorVersion = 7;
 
 // default contact port number
 static const UInt16        kDefaultPort = 24800;
@@ -263,6 +265,10 @@ extern const char*        kMsgDClipboard;
 // the new screen area.
 extern const char*        kMsgDInfo;
 
+// detailed screen list: secondary -> primary
+// payload is a serialized list of screens reported by the client.
+extern const char*        kMsgDScreenList;
+
 // set options:  primary -> secondary
 // client should set the given option/value pairs.  $1 = option/value
 // pairs.
@@ -342,4 +348,35 @@ public:
     The current location of the mouse cursor.
     */
     SInt32                m_mx, m_my;
+};
+
+class ClientScreenInfo {
+public:
+    ClientScreenInfo() :
+        m_x(0),
+        m_y(0),
+        m_w(0),
+        m_h(0)
+    {
+    }
+
+    ClientScreenInfo(const std::string& id,
+                     SInt32 x,
+                     SInt32 y,
+                     SInt32 w,
+                     SInt32 h) :
+        m_id(id),
+        m_x(x),
+        m_y(y),
+        m_w(w),
+        m_h(h)
+    {
+    }
+
+public:
+    std::string m_id;
+    SInt32      m_x;
+    SInt32      m_y;
+    SInt32      m_w;
+    SInt32      m_h;
 };

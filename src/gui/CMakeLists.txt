@@ -1,6 +1,6 @@
 cmake_minimum_required (VERSION 3.4)
 
-find_package (Qt5 REQUIRED COMPONENTS Core Widgets Network)
+find_package (Qt5 REQUIRED COMPONENTS Core Widgets Network Svg)
 set (CMAKE_AUTOMOC ON)
 set (CMAKE_AUTORCC ON)
 set (CMAKE_AUTOUIC ON)
@@ -35,6 +35,7 @@ set(GUI_SOURCE_FILES
     src/Ipc.cpp
     src/IpcReader.cpp
     src/KeySequenceWidget.cpp
+    src/LayoutEditorWidget.cpp
     src/LogWindow.cpp
     src/main.cpp
     src/MainWindow.cpp
@@ -75,6 +76,7 @@ set(GUI_HEADER_FILES
     src/Ipc.h
     src/IpcReader.h
     src/KeySequenceWidget.h
+    src/LayoutEditorWidget.h
     src/LogWindow.h
     src/MainWindow.h
     src/NewScreenWidget.h
@@ -132,7 +134,7 @@ add_executable (waver WIN32
 include_directories (./src)
 
 set_target_properties(waver PROPERTIES OUTPUT_NAME "waver")
-target_link_libraries(waver net base io Qt5::Core Qt5::Widgets Qt5::Network ${OPENSSL_LIBS})
+target_link_libraries(waver net base io Qt5::Core Qt5::Widgets Qt5::Network Qt5::Svg ${OPENSSL_LIBS})
 target_compile_definitions (waver PRIVATE -DBARRIER_VERSION_STAGE="${BARRIER_VERSION_STAGE}")
 target_compile_definitions (waver PRIVATE -DBARRIER_REVISION="${BARRIER_REVISION}")
 
@@ -178,5 +180,5 @@ if (BARRIER_BUILD_TESTS)
     add_test(guiunittests guiunittests)
 
     target_include_directories(guiunittests PUBLIC ../../ext)
-    target_link_libraries(guiunittests gtest gmock Qt5::Core Qt5::Widgets Qt5::Network ${libs})
+    target_link_libraries(guiunittests gtest gmock Qt5::Core Qt5::Widgets Qt5::Network Qt5::Svg ${libs})
 endif()

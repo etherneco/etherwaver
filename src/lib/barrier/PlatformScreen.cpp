@@ -39,6 +39,19 @@ PlatformScreen::updateKeyMap()
 }
 
 void
+PlatformScreen::getScreens(std::vector<ClientScreenInfo>& screens) const
+{
+    SInt32 x = 0;
+    SInt32 y = 0;
+    SInt32 width = 0;
+    SInt32 height = 0;
+    getShape(x, y, width, height);
+
+    screens.clear();
+    screens.push_back(ClientScreenInfo("screen0", x, y, width, height));
+}
+
+void
 PlatformScreen::updateKeyState()
 {
     getKeyState()->updateKeyState();

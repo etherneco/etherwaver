@@ -20,17 +20,20 @@
 #include "ServerConfig.h"
 #include "HotkeyDialog.h"
 #include "ActionDialog.h"
+#include "LayoutEditorWidget.h"
 
 #include <QtCore>
 #include <QtGui>
 #include <QMessageBox>
+#include <QHBoxLayout>
+#include <QPushButton>
 
 ServerConfigDialog::ServerConfigDialog(QWidget* parent, ServerConfig& config, const QString& defaultScreenName) :
     QDialog(parent, Qt::WindowTitleHint | Qt::WindowSystemMenuHint),
     Ui::ServerConfigDialogBase(),
     m_OrigServerConfig(config),
     m_ServerConfig(config),
-    m_ScreenSetupModel(serverConfig().screens(), serverConfig().numColumns(), serverConfig().numRows()),
+    m_layoutEditor(NULL),
     m_Message("")
 {
     setupUi(this);
@@ -64,10 +67,54 @@ ServerConfigDialog::ServerConfigDialog(QWidget* parent, ServerConfig& config, co
         m_pListHotkeys->addItem(hotkey.text());
     }
 
-    m_pScreenSetupView->setModel(&m_ScreenSetupModel);
+    if (serverConfig().numScreens() == 0 && !serverConfig().screens().empty()) {
+        serverConfig().screens()[0] = Screen(defaultScreenName);
+    }
 
-    if (serverConfig().numScreens() == 0)
-        model().screen(serverConfig().numColumns() / 2, serverConfig().numRows() / 2) = Screen(defaultScreenName);
+    m_pTrashScreenWidget->hide();
+    m_pLabelNewScreenWidget->hide();
+
+    QPushButton* addButton = new QPushButton(tr("Add Screen"), this);
+    QPushButton* editButton = new QPushButton(tr("Edit Selected"), this);
+    QPushButton* removeButton = new QPushButton(tr("Delete Selected"), this);
+    QPushButton* autoButton = new QPushButton(tr("Auto Layout"), this);
+    QPushButton* zoomOutButton = new QPushButton(tr("-"), this);
+    QPushButton* zoomInButton = new QPushButton(tr("+"), this);
+    editButton->setEnabled(false);
+    removeButton->setEnabled(false);
+    zoomOutButton->setFixedWidth(32);
+    zoomInButton->setFixedWidth(32);
+
+    QHBoxLayout* toolbar = new QHBoxLayout();
+    toolbar->addWidget(addButton);
+    toolbar->addWidget(editButton);
+    toolbar->addWidget(removeButton);
+    toolbar->addWidget(autoButton);
+    toolbar->addStretch();
+    toolbar->addWidget(zoomOutButton);
+    toolbar->addWidget(zoomInButton);
+    m_pTabScreens->layout()->addItem(toolbar);
+
+    m_layoutEditor = new LayoutEditorWidget(serverConfig(), this);
+    m_pTabScreens->layout()->replaceWidget(m_pScreenSetupView, m_layoutEditor);
+    m_layoutEditor->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    m_pScreenSetupView->hide();
+    QVBoxLayout* screensLayout = qobject_cast<QVBoxLayout*>(m_pTabScreens->layout());
+    if (screensLayout != NULL) {
+        screensLayout->setStretch(1, 1);
+    }
+
+    connect(addButton, SIGNAL(clicked()), this, SLOT(onAddScreen()));
+    connect(editButton, SIGNAL(clicked()), this, SLOT(onEditScreen()));
+    connect(removeButton, SIGNAL(clicked()), this, SLOT(onRemoveScreen()));
+    connect(autoButton, SIGNAL(clicked()), this, SLOT(onAutoLayout()));
+    connect(zoomOutButton, SIGNAL(clicked()), m_layoutEditor, SLOT(zoomOut()));
+    connect(zoomInButton, SIGNAL(clicked()), m_layoutEditor, SLOT(zoomIn()));
+    connect(m_layoutEditor, SIGNAL(selectionChanged(bool)), editButton, SLOT(setEnabled(bool)));
+    connect(m_layoutEditor, SIGNAL(selectionChanged(bool)), removeButton, SLOT(setEnabled(bool)));
+
+    label_2->setText(tr("Arrange screens freely on the canvas, like a visual layout editor."));
+    label_3->setText(tr("Drag screens freely, double click to edit, and save to generate EtherWaver object layout."));
 }
 
 void ServerConfigDialog::showEvent(QShowEvent* event)
@@ -108,12 +155,50 @@ void ServerConfigDialog::accept()
     serverConfig().setIgnoreAutoConfigClient(m_pCheckBoxIgnoreAutoConfigClient->isChecked());
     serverConfig().setEnableDragAndDrop(m_pCheckBoxEnableDragAndDrop->isChecked());
     serverConfig().setClipboardSharing(m_pCheckBoxEnableClipboard->isChecked());
+    syncLegacyGrid();
 
     // now that the dialog has been accepted, copy the new server config to the original one,
     // which is a reference to the one in MainWindow.
     setOrigServerConfig(serverConfig());
+    m_OrigServerConfig.saveSettings();
 
     QDialog::accept();
+}
+
+void ServerConfigDialog::onAddScreen()
+{
+    m_layoutEditor->addScreen();
+}
+
+void ServerConfigDialog::onEditScreen()
+{
+    m_layoutEditor->editSelectedScreen();
+}
+
+void ServerConfigDialog::onRemoveScreen()
+{
+    m_layoutEditor->removeSelectedScreen();
+}
+
+void ServerConfigDialog::onAutoLayout()
+{
+    m_layoutEditor->autoLayout();
+}
+
+void ServerConfigDialog::syncLegacyGrid()
+{
+    std::vector<Screen> ordered = serverConfig().screens();
+    std::sort(ordered.begin(), ordered.end(),
+              [](const Screen& a, const Screen& b) {
+                  if (a.isNull() != b.isNull()) {
+                      return !a.isNull();
+                  }
+                  if (a.position().y() != b.position().y()) {
+                      return a.position().y() < b.position().y();
+                  }
+                  return a.position().x() < b.position().x();
+              });
+    serverConfig().setScreens(ordered);
 }
 
 void ServerConfigDialog::on_m_pButtonNewHotkey_clicked()

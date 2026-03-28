@@ -32,10 +32,12 @@ class QString;
 class QFile;
 class ServerConfigDialog;
 class MainWindow;
+class LayoutEditorWidget;
 
 class ServerConfig : public BaseConfig
 {
     friend class ServerConfigDialog;
+    friend class LayoutEditorWidget;
     friend QTextStream& operator<<(QTextStream& outStream, const ServerConfig& config);
 
     public:
@@ -47,6 +49,7 @@ class ServerConfig : public BaseConfig
         const std::vector<Screen>& screens() const { return m_Screens; }
         int numColumns() const { return m_NumColumns; }
         int numRows() const { return m_NumRows; }
+        bool useCustomLinks() const { return m_UseCustomLinks; }
         bool hasHeartbeat() const { return m_HasHeartbeat; }
         int heartbeat() const { return m_Heartbeat; }
         bool relativeMouseMoves() const { return m_RelativeMouseMoves; }
@@ -68,6 +71,7 @@ class ServerConfig : public BaseConfig
         void loadSettings();
         bool save(const QString& fileName) const;
         void save(QFile& file) const;
+        bool saveLayout(const QString& configFileName) const;
         int numScreens() const;
         int autoAddScreen(const QString name);
 
@@ -78,6 +82,7 @@ class ServerConfig : public BaseConfig
         void addScreen(const Screen& screen) { m_Screens.push_back(screen); }
         void setNumColumns(int n) { m_NumColumns = n; }
         void setNumRows(int n) { m_NumRows = n; }
+        void setUseCustomLinks(bool on) { m_UseCustomLinks = on; }
         void haveHeartbeat(bool on) { m_HasHeartbeat = on; }
         void setHeartbeat(int val) { m_Heartbeat = val; }
         void setRelativeMouseMoves(bool on) { m_RelativeMouseMoves = on; }
@@ -109,6 +114,7 @@ class ServerConfig : public BaseConfig
         std::vector<Screen> m_Screens;
         int m_NumColumns;
         int m_NumRows;
+        bool m_UseCustomLinks;
         bool m_HasHeartbeat;
         int m_Heartbeat;
         bool m_RelativeMouseMoves;

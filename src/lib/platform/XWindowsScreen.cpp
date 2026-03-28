@@ -33,6 +33,8 @@
 #include "base/IEventQueue.h"
 #include "base/TMethodEventJob.h"
 
+#include <sstream>
+
 #include <cstring>
 #include <cstdlib>
 #include <algorithm>
@@ -477,6 +479,38 @@ XWindowsScreen::getShape(SInt32& x, SInt32& y, SInt32& w, SInt32& h) const
 	y = m_y;
 	w = m_w;
 	h = m_h;
+}
+
+void
+XWindowsScreen::getScreens(std::vector<ClientScreenInfo>& screens) const
+{
+	screens.clear();
+
+#if HAVE_X11_EXTENSIONS_XINERAMA_H
+	if (m_xinerama) {
+		int numScreens = 0;
+		XineramaScreenInfo* xScreens =
+			reinterpret_cast<XineramaScreenInfo*>(m_impl->XineramaQueryScreens(m_display, &numScreens));
+		if (xScreens != NULL) {
+			for (int i = 0; i < numScreens; ++i) {
+				std::ostringstream id;
+				id << "xinerama-" << i;
+				screens.push_back(ClientScreenInfo(id.str(),
+					xScreens[i].x_org,
+					xScreens[i].y_org,
+					xScreens[i].width,
+					xScreens[i].height));
+			}
+			XFree(xScreens);
+		}
+	}
+#endif
+
+	if (!screens.empty()) {
+		return;
+	}
+
+	screens.push_back(ClientScreenInfo("screen0", m_x, m_y, m_w, m_h));
 }
 
 void

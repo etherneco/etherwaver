@@ -57,5 +57,6 @@
         <file>icons/32x32/barrier-connected-mask.png</file>
         <file>icons/32x32/barrier-disconnected-mask.png</file>
         <file>icons/32x32/barrier-transfering-mask.png</file>
+        <file>icons/48x48/monitor-heroicons.svg</file>
     </qresource>
 </RCC>

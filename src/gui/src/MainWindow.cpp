@@ -677,6 +677,7 @@ QString MainWindow::configFilename()
 
         serverConfig().save(*m_pTempConfigFile);
         filename = m_pTempConfigFile->fileName();
+        serverConfig().saveLayout(filename);
 
         m_pTempConfigFile->close();
     }
@@ -1100,7 +1101,7 @@ bool MainWindow::on_m_pActionSave_triggered()
 {
     QString fileName = QFileDialog::getSaveFileName(this, tr("Save configuration as..."), QString(), barrierConfigSaveFilter);
 
-    if (!fileName.isEmpty() && !serverConfig().save(fileName))
+    if (!fileName.isEmpty() && (!serverConfig().save(fileName) || !serverConfig().saveLayout(fileName)))
     {
         QMessageBox::warning(this, tr("Save failed"), tr("Could not save configuration to file."));
         return true;

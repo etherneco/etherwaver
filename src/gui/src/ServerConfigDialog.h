@@ -20,7 +20,6 @@
 
 #define SERVERCONFIGDIALOG__H
 
-#include "ScreenSetupModel.h"
 #include "ServerConfig.h"
 
 #include "ui_ServerConfigDialogBase.h"
@@ -40,6 +39,10 @@ class ServerConfigDialog : public QDialog, public Ui::ServerConfigDialogBase
         void message(const QString& message) { m_Message = message; }
 
     protected slots:
+        void onAddScreen();
+        void onEditScreen();
+        void onRemoveScreen();
+        void onAutoLayout();
         void on_m_pButtonNewHotkey_clicked();
         void on_m_pListHotkeys_itemSelectionChanged();
         void on_m_pButtonEditHotkey_clicked();
@@ -53,12 +56,12 @@ class ServerConfigDialog : public QDialog, public Ui::ServerConfigDialogBase
     protected:
         ServerConfig& serverConfig() { return m_ServerConfig; }
         void setOrigServerConfig(const ServerConfig& s) { m_OrigServerConfig = s; }
-        ScreenSetupModel& model() { return m_ScreenSetupModel; }
+        void syncLegacyGrid();
 
     private:
         ServerConfig& m_OrigServerConfig;
         ServerConfig m_ServerConfig;
-        ScreenSetupModel m_ScreenSetupModel;
+        class LayoutEditorWidget* m_layoutEditor;
         QString m_Message;
 };
 

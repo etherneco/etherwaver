@@ -26,6 +26,34 @@
 #include "base/TMethodEventJob.h"
 
 #include <cstring>
+#include <cstdlib>
+#include <sstream>
+
+namespace {
+
+bool
+parseScreenLine(const std::string& line, ClientScreenInfo& screen)
+{
+    std::istringstream stream(line);
+    std::string token;
+    std::vector<std::string> tokens;
+    while (std::getline(stream, token, ',')) {
+        tokens.push_back(token);
+    }
+
+    if (tokens.size() != 5 || tokens[0].empty()) {
+        return false;
+    }
+
+    screen.m_id = tokens[0];
+    screen.m_x = static_cast<SInt32>(std::strtol(tokens[1].c_str(), NULL, 10));
+    screen.m_y = static_cast<SInt32>(std::strtol(tokens[2].c_str(), NULL, 10));
+    screen.m_w = static_cast<SInt32>(std::strtol(tokens[3].c_str(), NULL, 10));
+    screen.m_h = static_cast<SInt32>(std::strtol(tokens[4].c_str(), NULL, 10));
+    return (screen.m_w > 0 && screen.m_h > 0);
+}
+
+} // namespace
 
 //
 // ClientProxy1_0
@@ -222,6 +250,9 @@ ClientProxy1_0::parseMessage(const UInt8* code)
     else if (memcmp(code, kMsgDClipboard, 4) == 0) {
         return recvClipboard();
     }
+    else if (memcmp(code, kMsgDScreenList, 4) == 0) {
+        return recvScreenList();
+    }
     return false;
 }
 
@@ -261,6 +292,21 @@ ClientProxy1_0::getShape(SInt32& x, SInt32& y, SInt32& w, SInt32& h) const
     y = m_info.m_y;
     w = m_info.m_w;
     h = m_info.m_h;
+}
+
+void
+ClientProxy1_0::getScreens(std::vector<ClientScreenInfo>& screens) const
+{
+    screens = m_screens;
+    if (!screens.empty()) {
+        return;
+    }
+
+    screens.push_back(ClientScreenInfo("screen0",
+                                       m_info.m_x,
+                                       m_info.m_y,
+                                       m_info.m_w,
+                                       m_info.m_h));
 }
 
 void
@@ -449,6 +495,9 @@ ClientProxy1_0::recvInfo()
     m_info.m_h  = h;
     m_info.m_mx = mx;
     m_info.m_my = my;
+    if (m_screens.empty()) {
+        m_screens.push_back(ClientScreenInfo("screen0", x, y, w, h));
+    }
 
     // acknowledge receipt
     LOG((CLOG_DEBUG1 "send info ack to \"%s\"", getName().c_str()));
@@ -461,6 +510,42 @@ ClientProxy1_0::recvClipboard()
 {
     // deprecated in protocol 1.0
     return false;
+}
+
+bool
+ClientProxy1_0::recvScreenList()
+{
+    std::string payload;
+    if (!ProtocolUtil::readf(getStream(), kMsgDScreenList + 4, &payload)) {
+        return false;
+    }
+
+    std::vector<ClientScreenInfo> screens;
+    std::istringstream stream(payload);
+    std::string line;
+    while (std::getline(stream, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        ClientScreenInfo screen;
+        if (!parseScreenLine(line, screen)) {
+            return false;
+        }
+        screens.push_back(screen);
+    }
+
+    if (screens.empty()) {
+        screens.push_back(ClientScreenInfo("screen0",
+                                           m_info.m_x,
+                                           m_info.m_y,
+                                           m_info.m_w,
+                                           m_info.m_h));
+    }
+
+    m_screens = screens;
+    m_events->addEvent(Event(m_events->forIScreen().shapeChanged(), getEventTarget()));
+    return true;
 }
 
 bool

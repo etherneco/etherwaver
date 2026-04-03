@@ -40,6 +40,9 @@ void Screen::init()
 {
     name().clear();
     aliases().clear();
+    setPosition(QPoint(0, 0));
+    setSize(QSize(240, 140));
+    clearLinks();
     modifiers().clear();
     switchCorners().clear();
     fixes().clear();
@@ -65,6 +68,14 @@ void Screen::loadSettings(QSettings& settings)
         return;
 
     setSwitchCornerSize(settings.value("switchCornerSize").toInt());
+    setPosition(QPoint(settings.value("layoutX", 0).toInt(),
+                       settings.value("layoutY", 0).toInt()));
+    setSize(QSize(settings.value("layoutWidth", 240).toInt(),
+                  settings.value("layoutHeight", 140).toInt()));
+    setLink(LinkRight, settings.value("linkRight").toString());
+    setLink(LinkLeft, settings.value("linkLeft").toString());
+    setLink(LinkUp, settings.value("linkUp").toString());
+    setLink(LinkDown, settings.value("linkDown").toString());
 
     readSettings<QString>(settings, aliases(), "alias", QString(""));
     readSettings<int>(settings, modifiers(), "modifier", Modifier::DefaultMod,
@@ -82,6 +93,14 @@ void Screen::saveSettings(QSettings& settings) const
         return;
 
     settings.setValue("switchCornerSize", switchCornerSize());
+    settings.setValue("layoutX", position().x());
+    settings.setValue("layoutY", position().y());
+    settings.setValue("layoutWidth", size().width());
+    settings.setValue("layoutHeight", size().height());
+    settings.setValue("linkRight", link(LinkRight));
+    settings.setValue("linkLeft", link(LinkLeft));
+    settings.setValue("linkUp", link(LinkUp));
+    settings.setValue("linkDown", link(LinkDown));
 
     writeSettings<QString>(settings, aliases(), "alias");
     writeSettings<int>(settings, modifiers(), "modifier");
@@ -142,6 +161,9 @@ QDataStream& operator<<(QDataStream& outStream, const Screen& screen)
 
     return outStream
         << screen.name()
+        << screen.position()
+        << screen.size()
+        << screen.links()
         << screen.switchCornerSize()
         << screen.aliases()
         << modifiers
@@ -153,17 +175,27 @@ QDataStream& operator<<(QDataStream& outStream, const Screen& screen)
 QDataStream& operator>>(QDataStream& inStream, Screen& screen)
 {
     QList<int> modifiers;
-    return inStream
+    inStream
         >> screen.m_Name
+        >> screen.m_Position
+        >> screen.m_Size
+        >> screen.m_Links
         >> screen.m_SwitchCornerSize
         >> screen.m_Aliases
         >> modifiers
         >> screen.m_SwitchCorners
-        >> screen.m_Fixes
-        ;
+        >> screen.m_Fixes;
 
     screen.m_Modifiers.clear();
     for (auto mod : modifiers) {
         screen.m_Modifiers.push_back(static_cast<Screen::Modifier>(mod));
     }
+
+    if (screen.m_Links.size() < static_cast<int>(Screen::LinkCount)) {
+        while (screen.m_Links.size() < static_cast<int>(Screen::LinkCount)) {
+            screen.m_Links << QString();
+        }
+    }
+
+    return inStream;
 }

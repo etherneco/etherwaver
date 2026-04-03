@@ -48,6 +48,7 @@ ServerConfig::ServerConfig(QSettings* settings, int numColumns, int numRows ,
     m_Screens(),
     m_NumColumns(numColumns),
     m_NumRows(numRows),
+    m_UseCustomLinks(false),
     m_ServerName(serverName),
     m_IgnoreAutoConfigClient(false),
     m_EnableDragAndDrop(false),
@@ -73,6 +74,61 @@ bool ServerConfig::save(const QString& fileName) const
     save(file);
     file.close();
 
+    return true;
+}
+
+bool ServerConfig::saveLayout(const QString& configFileName) const
+{
+    QFileInfo configInfo(configFileName);
+    const QString layoutPath =
+        configInfo.absoluteDir().absoluteFilePath("etherwaver-layout.json");
+
+    QFile file(layoutPath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+        return false;
+    }
+
+    QTextStream out(&file);
+    out << "{\n  \"screens\": [\n";
+
+    bool first = true;
+    for (const Screen& screen : screens()) {
+        if (screen.isNull()) {
+            continue;
+        }
+
+        if (!first) {
+            out << ",\n";
+        }
+        first = false;
+
+        const QSize size = screen.size().isValid() ? screen.size() : QSize(240, 140);
+        out << "    {\n"
+            << "      \"id\": \"" << screen.name() << "\",\n"
+            << "      \"host\": \"" << screen.name() << "\",\n"
+            << "      \"name\": \"" << screen.name() << "\",\n"
+            << "      \"x\": " << screen.position().x() << ",\n"
+            << "      \"y\": " << screen.position().y() << ",\n"
+            << "      \"width\": " << size.width() << ",\n"
+            << "      \"height\": " << size.height();
+
+        if (useCustomLinks()) {
+            out << ",\n"
+                << "      \"links\": {\n"
+                << "        \"right\": \"" << screen.link(Screen::LinkRight) << "\",\n"
+                << "        \"left\": \"" << screen.link(Screen::LinkLeft) << "\",\n"
+                << "        \"up\": \"" << screen.link(Screen::LinkUp) << "\",\n"
+                << "        \"down\": \"" << screen.link(Screen::LinkDown) << "\"\n"
+                << "      }\n"
+                << "    }";
+        }
+        else {
+            out << "\n"
+                << "    }";
+        }
+    }
+
+    out << "\n  ]\n}\n";
     return true;
 }
 
@@ -105,6 +161,7 @@ void ServerConfig::saveSettings()
 
     settings().setValue("numColumns", numColumns());
     settings().setValue("numRows", numRows());
+    settings().setValue("useCustomLinks", useCustomLinks());
 
     settings().setValue("hasHeartbeat", hasHeartbeat());
     settings().setValue("heartbeat", heartbeat());
@@ -139,6 +196,7 @@ void ServerConfig::saveSettings()
     settings().endArray();
 
     settings().endGroup();
+    settings().sync();
 }
 
 void ServerConfig::loadSettings()
@@ -147,6 +205,7 @@ void ServerConfig::loadSettings()
 
     setNumColumns(settings().value("numColumns", 5).toInt());
     setNumRows(settings().value("numRows", 3).toInt());
+    setUseCustomLinks(settings().value("useCustomLinks", false).toBool());
 
     // we need to know the number of columns and rows before we can set up ourselves
     init();
@@ -230,16 +289,42 @@ QTextStream& operator<<(QTextStream& outStream, const ServerConfig& config)
 
     outStream << "section: links" << endl;
 
+    const auto screenExists = [&config](const QString& name) {
+        if (name.isEmpty()) {
+            return false;
+        }
+        for (const Screen& screen : config.screens()) {
+            if (!screen.isNull() && screen.name().compare(name, Qt::CaseInsensitive) == 0) {
+                return true;
+            }
+        }
+        return false;
+    };
+
     for (int i = 0; i < config.screens().size(); i++)
         if (!config.screens()[i].isNull())
         {
             outStream << "\t" << config.screens()[i].name() << ":" << endl;
 
-            for (unsigned int j = 0; j < sizeof(neighbourDirs) / sizeof(neighbourDirs[0]); j++)
-            {
-                int idx = config.adjacentScreenIndex(i, neighbourDirs[j].x, neighbourDirs[j].y);
-                if (idx != -1 && !config.screens()[idx].isNull())
-                    outStream << "\t\t" << neighbourDirs[j].name << " = " << config.screens()[idx].name() << endl;
+            if (config.useCustomLinks()) {
+                const Screen& screen = config.screens()[i];
+                const Screen::LinkDirection directions[] = {
+                    Screen::LinkRight, Screen::LinkLeft, Screen::LinkUp, Screen::LinkDown
+                };
+                for (unsigned int j = 0; j < sizeof(directions) / sizeof(directions[0]); ++j) {
+                    const QString target = screen.link(directions[j]);
+                    if (screenExists(target)) {
+                        outStream << "\t\t" << neighbourDirs[j].name << " = " << target << endl;
+                    }
+                }
+            }
+            else {
+                for (unsigned int j = 0; j < sizeof(neighbourDirs) / sizeof(neighbourDirs[0]); j++)
+                {
+                    int idx = config.adjacentScreenIndex(i, neighbourDirs[j].x, neighbourDirs[j].y);
+                    if (idx != -1 && !config.screens()[idx].isNull())
+                        outStream << "\t\t" << neighbourDirs[j].name << " = " << config.screens()[idx].name() << endl;
+                }
             }
         }
 

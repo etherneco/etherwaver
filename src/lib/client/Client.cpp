@@ -239,6 +239,12 @@ Client::getShape(SInt32& x, SInt32& y, SInt32& w, SInt32& h) const
 }
 
 void
+Client::getScreens(std::vector<ClientScreenInfo>& screens) const
+{
+    m_screen->getScreens(screens);
+}
+
+void
 Client::getCursorPos(SInt32& x, SInt32& y) const
 {
     m_screen->getCursorPos(x, y);

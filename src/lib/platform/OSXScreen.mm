@@ -39,6 +39,8 @@
 #include "base/IEventQueue.h"
 #include "base/TMethodEventJob.h"
 
+#include <sstream>
+
 #include <math.h>
 #include <mach-o/dyld.h>
 #include <AvailabilityMacros.h>
@@ -242,6 +244,39 @@ OSXScreen::getShape(SInt32& x, SInt32& y, SInt32& w, SInt32& h) const
 	y = m_y;
 	w = m_w;
 	h = m_h;
+}
+
+void
+OSXScreen::getScreens(std::vector<ClientScreenInfo>& screens) const
+{
+	screens.clear();
+
+	CGDisplayCount displayCount = 0;
+	if (CGGetActiveDisplayList(0, NULL, &displayCount) != CGDisplayNoErr ||
+		displayCount == 0) {
+		screens.push_back(ClientScreenInfo("screen0", m_x, m_y, m_w, m_h));
+		return;
+	}
+
+	CGDirectDisplayID* displays = new CGDirectDisplayID[displayCount];
+	if (CGGetActiveDisplayList(displayCount, displays, &displayCount) != CGDisplayNoErr) {
+		delete[] displays;
+		screens.push_back(ClientScreenInfo("screen0", m_x, m_y, m_w, m_h));
+		return;
+	}
+
+	for (CGDisplayCount i = 0; i < displayCount; ++i) {
+		const CGRect bounds = CGDisplayBounds(displays[i]);
+		std::ostringstream id;
+		id << "display-" << displays[i];
+		screens.push_back(ClientScreenInfo(id.str(),
+			(SInt32)bounds.origin.x,
+			(SInt32)bounds.origin.y,
+			(SInt32)bounds.size.width,
+			(SInt32)bounds.size.height));
+	}
+
+	delete[] displays;
 }
 
 void

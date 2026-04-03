@@ -237,6 +237,10 @@ ClientProxyUnknown::handleData(const Event&, void*)
             case 6:
                 m_proxy = new ClientProxy1_6(name, m_stream, m_server, m_events);
                 break;
+
+            case 7:
+                m_proxy = new ClientProxy1_6(name, m_stream, m_server, m_events);
+                break;
             }
         }
 

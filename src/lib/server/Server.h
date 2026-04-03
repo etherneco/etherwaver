@@ -32,6 +32,10 @@
 #include "common/stdmap.h"
 #include "common/stdset.h"
 #include "common/stdvector.h"
+#include "core/layout/ScreenManager.h"
+
+#include <mutex>
+#include <thread>
 
 class BaseClientProxy;
 class EventQueueTimer;
@@ -202,7 +206,8 @@ private:
 
     // change the active screen
     void                switchScreen(BaseClientProxy*,
-                            SInt32 x, SInt32 y, bool forScreenSaver);
+                            SInt32 x, SInt32 y, bool forScreenSaver,
+                            const std::string& layoutScreenId = std::string());
 
     // jump to screen
     void                jumpToScreen(BaseClientProxy*);
@@ -289,6 +294,16 @@ private:
 
     // process options from configuration
     void                processOptions();
+
+    void                reloadScreenLayout();
+    std::string         getLayoutPath() const;
+    bool                usingObjectLayout() const;
+    const etherwaver::layout::Screen*
+                        getActiveLayoutScreen() const;
+    const etherwaver::layout::Screen*
+                        getLayoutScreenForHost(const std::string& hostId) const;
+    BaseClientProxy*    getClientForLayoutScreen(const etherwaver::layout::Screen& screen) const;
+    bool                trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion);
 
     // event handlers
     void                handleShapeChanged(const Event&, void*);
@@ -481,4 +496,15 @@ private:
 
     ClientListener*        m_clientListener;
     ServerArgs            m_args;
+    etherwaver::layout::ScreenManager m_screenLayout;
+    std::string         m_activeLayoutScreenId;
+
+    ArchSocket          m_httpListener;
+    std::thread         m_httpThread;
+    bool                m_running;
+    mutable std::mutex  m_mutex;
+    std::string         m_currentHost;
+    std::string         m_current_ip;
+
+    void                httpLoop();
 };

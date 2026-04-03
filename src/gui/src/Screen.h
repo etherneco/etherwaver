@@ -24,6 +24,8 @@
 #include <QString>
 #include <QList>
 #include <QStringList>
+#include <QPoint>
+#include <QSize>
 
 #include "BaseConfig.h"
 
@@ -41,6 +43,14 @@ class Screen : public BaseConfig
     friend class ScreenSetupView;
 
     public:
+        enum LinkDirection {
+            LinkRight = 0,
+            LinkLeft,
+            LinkUp,
+            LinkDown,
+            LinkCount
+        };
+
         Screen();
         Screen(const QString& name);
 
@@ -48,6 +58,10 @@ class Screen : public BaseConfig
         const QPixmap* pixmap() const { return &m_Pixmap; }
         const QString& name() const { return m_Name; }
         const QStringList& aliases() const { return m_Aliases; }
+        const QPoint& position() const { return m_Position; }
+        const QSize& size() const { return m_Size; }
+        QString link(LinkDirection direction) const { return m_Links[static_cast<int>(direction)]; }
+        const QStringList& links() const { return m_Links; }
 
         bool isNull() const { return m_Name.isEmpty(); }
         Modifier modifier(Modifier m) const
@@ -71,6 +85,16 @@ class Screen : public BaseConfig
         bool swapped() const { return m_Swapped; }
         QString& name() { return m_Name; }
         void setName(const QString& name) { m_Name = name; }
+        void setPosition(const QPoint& position) { m_Position = position; }
+        void setSize(const QSize& size) { m_Size = size; }
+        void setLink(LinkDirection direction, const QString& target) { m_Links[static_cast<int>(direction)] = target; }
+        void clearLinks()
+        {
+            m_Links.clear();
+            for (int i = 0; i < static_cast<int>(LinkCount); ++i) {
+                m_Links << QString();
+            }
+        }
 
     protected:
         void init();
@@ -93,6 +117,9 @@ class Screen : public BaseConfig
         QString m_Name;
 
         QStringList m_Aliases;
+        QPoint m_Position;
+        QSize m_Size;
+        QStringList m_Links;
         QList<Modifier> m_Modifiers;
         QList<bool> m_SwitchCorners;
         int m_SwitchCornerSize;

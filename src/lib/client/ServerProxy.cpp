@@ -34,6 +34,29 @@
 #include "base/XBase.h"
 
 #include <memory>
+#include <sstream>
+
+namespace {
+
+std::string
+serializeScreenList(const std::vector<ClientScreenInfo>& screens)
+{
+    std::ostringstream stream;
+    for (std::vector<ClientScreenInfo>::const_iterator it = screens.begin();
+         it != screens.end(); ++it) {
+        if (it != screens.begin()) {
+            stream << '\n';
+        }
+        stream << it->m_id << ','
+               << it->m_x << ','
+               << it->m_y << ','
+               << it->m_w << ','
+               << it->m_h;
+    }
+    return stream.str();
+}
+
+} // namespace
 
 //
 // ServerProxy
@@ -401,6 +424,11 @@ ServerProxy::sendInfo(const ClientInfo& info)
                                 info.m_x, info.m_y,
                                 info.m_w, info.m_h, 0,
                                 info.m_mx, info.m_my);
+
+    std::vector<ClientScreenInfo> screens;
+    m_client->getScreens(screens);
+    const std::string serializedScreens = serializeScreenList(screens);
+    ProtocolUtil::writef(m_stream, kMsgDScreenList, &serializedScreens);
 }
 
 KeyID

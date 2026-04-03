@@ -120,6 +120,12 @@ PrimaryClient::getShape(SInt32& x, SInt32& y,
 }
 
 void
+PrimaryClient::getScreens(std::vector<ClientScreenInfo>& screens) const
+{
+    m_screen->getScreens(screens);
+}
+
+void
 PrimaryClient::getCursorPos(SInt32& x, SInt32& y) const
 {
     m_screen->getCursorPos(x, y);

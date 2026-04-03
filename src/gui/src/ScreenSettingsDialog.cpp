@@ -43,9 +43,14 @@ ScreenSettingsDialog::ScreenSettingsDialog(QWidget* parent, Screen* pScreen) :
 {
     setupUi(this);
 
-    m_pLineEditName->setText(check_name_param(m_pScreen->name()));
+    QString baseName;
+    int number = 1;
+    splitScreenName(m_pScreen->name(), baseName, number);
+
+    m_pLineEditName->setText(check_name_param(baseName));
     m_pLineEditName->setValidator(new QRegExpValidator(ValidScreenName, m_pLineEditName));
     m_pLineEditName->selectAll();
+    m_pSpinBoxNumber->setValue(number);
 
     m_pLineEditAlias->setValidator(new QRegExpValidator(ValidScreenName, m_pLineEditName));
 
@@ -84,12 +89,13 @@ void ScreenSettingsDialog::accept()
 
     m_pScreen->init();
 
-    m_pScreen->setName(m_pLineEditName->text());
+    const QString fullName = composedScreenName();
+    m_pScreen->setName(fullName);
 
     for (int i = 0; i < m_pListAliases->count(); i++)
     {
         QString alias(m_pListAliases->item(i)->text());
-        if (alias == m_pLineEditName->text())
+        if (alias == fullName)
         {
             QMessageBox::warning(
                 this, tr("Screen name matches alias"),
@@ -151,4 +157,26 @@ void ScreenSettingsDialog::on_m_pButtonRemoveAlias_clicked()
 void ScreenSettingsDialog::on_m_pListAliases_itemSelectionChanged()
 {
     m_pButtonRemoveAlias->setEnabled(!m_pListAliases->selectedItems().isEmpty());
+}
+
+QString ScreenSettingsDialog::composedScreenName() const
+{
+    return QString("%1-%2")
+        .arg(check_name_param(m_pLineEditName->text()))
+        .arg(m_pSpinBoxNumber->value());
+}
+
+void ScreenSettingsDialog::splitScreenName(const QString& fullName, QString& baseName, int& number) const
+{
+    QRegExp pattern("^(.*?)-(\\d+)$");
+    if (pattern.exactMatch(fullName)) {
+        baseName = pattern.cap(1);
+        number = pattern.cap(2).toInt();
+        if (!baseName.isEmpty() && number > 0) {
+            return;
+        }
+    }
+
+    baseName = fullName;
+    number = 1;
 }

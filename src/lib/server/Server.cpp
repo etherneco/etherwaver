@@ -36,19 +36,67 @@
 #include "net/TCPSocket.h"
 #include "net/IDataSocket.h"
 #include "net/IListenSocket.h"
+#include "arch/IArchNetwork.h"
 #include "net/XSocket.h"
 #include "mt/Thread.h"
 #include "arch/Arch.h"
 #include "base/IEventQueue.h"
 #include "base/Log.h"
 #include "base/TMethodEventJob.h"
+#include "core/layout/LayoutLoader.h"
+
+#include "net/IDataSocket.h"
+#include "arch/IArchNetwork.h"
 
 #include <cstring>
+#include <string>
+#include <typeinfo>
 #include <cstdlib>
 #include <sstream>
 #include <fstream>
 #include <ctime>
 #include <stdexcept>
+#include <cctype>
+
+namespace {
+
+static int
+clampInt(int value, int minValue, int maxValue)
+{
+    if (value < minValue) {
+        return minValue;
+    }
+    if (value > maxValue) {
+        return maxValue;
+    }
+    return value;
+}
+
+static int
+toGlobalCoordinate(int localValue, int localOrigin, int localSpan,
+                   int screenOrigin, int screenSpan)
+{
+    if (localSpan <= 0 || screenSpan <= 0) {
+        return screenOrigin;
+    }
+
+    const int offset = localValue - localOrigin;
+    return screenOrigin + (offset * screenSpan) / localSpan;
+}
+
+static int
+toClientCoordinate(int globalValue, int screenOrigin, int screenSpan,
+                   int clientOrigin, int clientSpan)
+{
+    if (screenSpan <= 0 || clientSpan <= 0) {
+        return clientOrigin;
+    }
+
+    const int offset = globalValue - screenOrigin;
+    return clientOrigin + (offset * clientSpan) / screenSpan;
+}
+
+} // namespace
 //
 // Server
 //
@@ -92,7 +140,10 @@ Server::Server(
 	m_enableClipboard(true),
 	m_sendDragInfoThread(NULL),
 	m_waitDragInfoThread(true),
-	m_args(args)
+	m_args(args),
+	m_activeLayoutScreenId(primaryClient != NULL ? primaryClient->getName() : std::string()),
+	m_httpListener(NULL),
+	m_running(false)
 {
 	// must have a primary client and it must have a canonical name
 	assert(m_primaryClient != NULL);
@@ -213,6 +264,27 @@ Server::Server(
 		m_lockedToScreen = true;
 	}
 
+// Initialize current host to server's own name
+    m_currentHost = m_primaryClient->getName();
+
+    // Start the HTTP endpoint
+    try {
+        NetworkAddress addr("0.0.0.0", 24802);  // Listen on all interfaces, port 24801
+        addr.resolve();
+
+    
+	m_httpListener = ARCH->newSocket(IArchNetwork::kINET, IArchNetwork::kSTREAM);
+        ARCH->bindSocket(m_httpListener, addr.getAddress());
+        ARCH->listenOnSocket(m_httpListener);  // Backlog 5
+
+        m_running = true;
+        m_httpThread = std::thread(&Server::httpLoop, this);
+
+    } catch (XBase& e) {
+        LOG((CLOG_ERR "Failed to start HTTP endpoint: %s", e.what()));
+    }
+
+
 }
 
 Server::~Server()
@@ -266,6 +338,12 @@ Server::~Server()
 	// disable and disconnect primary client
 	m_primaryClient->disable();
 	removeClient(m_primaryClient);
+
+    if (m_httpListener) {
+        m_running = false;
+        ARCH->closeSocket(m_httpListener);
+        m_httpThread.join();
+    }
 }
 
 bool
@@ -299,6 +377,7 @@ Server::setConfig(const Config& config)
 	}
 
 	// tell primary screen about reconfiguration
+	reloadScreenLayout();
 	m_primaryClient->reconfigure(getActivePrimarySides());
 
 	// tell all (connected) clients about current options
@@ -336,6 +415,7 @@ Server::adoptClient(BaseClientProxy* client)
 		return;
 	}
 	LOG((CLOG_NOTE "client \"%s\" has connected", getName(client).c_str()));
+	reloadScreenLayout();
 
 	// send configuration options to client
 	sendOptions(client);
@@ -388,6 +468,165 @@ std::string Server::getName(const BaseClientProxy* client) const
 		name = client->getName();
 	}
 	return name;
+}
+
+std::string
+Server::getLayoutPath() const
+{
+    if (m_args.m_configFile.empty()) {
+        return "etherwaver-layout.json";
+    }
+
+    const std::string configPath = m_args.m_configFile;
+    const std::string::size_type slash = configPath.find_last_of("/\\");
+    if (slash == std::string::npos) {
+        return "etherwaver-layout.json";
+    }
+    return configPath.substr(0, slash + 1) + "etherwaver-layout.json";
+}
+
+bool
+Server::usingObjectLayout() const
+{
+    return !m_screenLayout.empty();
+}
+
+const etherwaver::layout::Screen*
+Server::getActiveLayoutScreen() const
+{
+    if (!usingObjectLayout()) {
+        return NULL;
+    }
+
+    const etherwaver::layout::Screen* screen =
+        m_screenLayout.getScreen(m_activeLayoutScreenId);
+    if (screen != NULL) {
+        return screen;
+    }
+
+    return m_screenLayout.getFirstScreenForHost(getName(m_active));
+}
+
+const etherwaver::layout::Screen*
+Server::getLayoutScreenForHost(const std::string& hostId) const
+{
+    if (!usingObjectLayout()) {
+        return NULL;
+    }
+    return m_screenLayout.getFirstScreenForHost(hostId);
+}
+
+BaseClientProxy*
+Server::getClientForLayoutScreen(const etherwaver::layout::Screen& screen) const
+{
+    ClientList::const_iterator it = m_clients.find(screen.m_hostId);
+    if (it == m_clients.end()) {
+        return NULL;
+    }
+    return it->second;
+}
+
+void
+Server::reloadScreenLayout()
+{
+    const std::string previousActiveScreenId = m_activeLayoutScreenId;
+    std::map<std::string, etherwaver::layout::HostGeometry> hostGeometries;
+    std::map<std::string, std::vector<ClientScreenInfo> > hostScreens;
+
+    for (ClientList::const_iterator it = m_clients.begin(); it != m_clients.end(); ++it) {
+        SInt32 x = 0;
+        SInt32 y = 0;
+        SInt32 width = 0;
+        SInt32 height = 0;
+        it->second->getShape(x, y, width, height);
+        hostGeometries[it->first] = etherwaver::layout::HostGeometry(x, y, width, height);
+        it->second->getScreens(hostScreens[it->first]);
+    }
+
+    try {
+        m_screenLayout = etherwaver::layout::LayoutLoader::loadLayout(
+            getLayoutPath(), *m_config, hostGeometries, hostScreens, m_primaryClient->getName());
+    }
+    catch (const std::exception& e) {
+        LOG((CLOG_WARN "failed to load object layout: %s", e.what()));
+        m_screenLayout.setScreens(std::vector<etherwaver::layout::Screen>());
+    }
+
+    const etherwaver::layout::Screen* activeScreen =
+        m_screenLayout.getScreen(previousActiveScreenId);
+    if (activeScreen != NULL && activeScreen->m_hostId != getName(m_active)) {
+        activeScreen = NULL;
+    }
+    if (activeScreen == NULL) {
+        activeScreen = getLayoutScreenForHost(getName(m_active));
+    }
+    if (activeScreen != NULL) {
+        m_activeLayoutScreenId = activeScreen->m_id;
+    }
+}
+
+bool
+Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
+{
+    const etherwaver::layout::Screen* sourceScreen = getActiveLayoutScreen();
+    if (sourceScreen == NULL) {
+        return false;
+    }
+
+    SInt32 ax, ay, aw, ah;
+    m_active->getShape(ax, ay, aw, ah);
+
+    const int globalX = toGlobalCoordinate(x, ax, aw, sourceScreen->m_x, sourceScreen->m_width);
+    const int globalY = toGlobalCoordinate(y, ay, ah, sourceScreen->m_y, sourceScreen->m_height);
+    const etherwaver::layout::Screen* destinationScreen = m_screenLayout.findScreenAt(globalX, globalY);
+    if (destinationScreen == NULL || destinationScreen->m_id == sourceScreen->m_id) {
+        noSwitch(clampInt(x, ax, ax + aw - 1), clampInt(y, ay, ay + ah - 1));
+        return false;
+    }
+
+    BaseClientProxy* destinationClient = getClientForLayoutScreen(*destinationScreen);
+    if (destinationClient == NULL) {
+        return false;
+    }
+
+    EDirection direction = kNoDirection;
+    if (globalX < sourceScreen->m_x) {
+        direction = kLeft;
+    }
+    else if (globalX >= sourceScreen->m_x + sourceScreen->m_width) {
+        direction = kRight;
+    }
+    else if (globalY < sourceScreen->m_y) {
+        direction = kTop;
+    }
+    else if (globalY >= sourceScreen->m_y + sourceScreen->m_height) {
+        direction = kBottom;
+    }
+
+    const SInt32 xActive = clampInt(x, ax, ax + aw - 1);
+    const SInt32 yActive = clampInt(y, ay, ay + ah - 1);
+
+    SInt32 dx = 0;
+    SInt32 dy = 0;
+    destinationClient->getShape(dx, dy, aw, ah);
+
+    SInt32 targetX = toClientCoordinate(globalX, destinationScreen->m_x, destinationScreen->m_width,
+                                        dx, aw);
+    SInt32 targetY = toClientCoordinate(globalY, destinationScreen->m_y, destinationScreen->m_height,
+                                        dy, ah);
+    targetX = clampInt(targetX, dx, dx + aw - 1);
+    targetY = clampInt(targetY, dy, dy + ah - 1);
+
+    if (!isSwitchOkay(destinationClient, direction, targetX, targetY, xActive, yActive)) {
+        return false;
+    }
+
+    switchScreen(destinationClient, targetX, targetY, false, destinationScreen->m_id);
+    if (!absoluteMotion) {
+        m_x = targetX;
+        m_y = targetY;
+    }
+    return true;
 }
 
 UInt32
@@ -448,7 +687,8 @@ Server::getJumpZoneSize(BaseClientProxy* client) const
 
 void
 Server::switchScreen(BaseClientProxy* dst,
-				SInt32 x, SInt32 y, bool forScreensaver)
+				SInt32 x, SInt32 y, bool forScreensaver,
+				const std::string& layoutScreenId)
 {
 	assert(dst != NULL);
 
@@ -499,6 +739,20 @@ Server::switchScreen(BaseClientProxy* dst,
 
 		// cut over
 		m_active = dst;
+		{ 
+			std::lock_guard<std::mutex> lock(m_mutex); 
+			m_currentHost = dst->getName(); 
+			m_current_ip.clear();
+		}
+		if (!layoutScreenId.empty()) {
+			m_activeLayoutScreenId = layoutScreenId;
+		}
+		else if (usingObjectLayout()) {
+			const etherwaver::layout::Screen* screen = getLayoutScreenForHost(getName(dst));
+			if (screen != NULL) {
+				m_activeLayoutScreenId = screen->m_id;
+			}
+		}
 
 		// increment enter sequence number
 		++m_seqNum;
@@ -520,6 +774,9 @@ Server::switchScreen(BaseClientProxy* dst,
 		m_events->addEvent(Event(m_events->forServer().screenSwitched(), this, info));
 	}
 	else {
+		if (!layoutScreenId.empty()) {
+			m_activeLayoutScreenId = layoutScreenId;
+		}
 		m_active->mouseMove(x, y);
 	}
 }
@@ -536,7 +793,15 @@ Server::jumpToScreen(BaseClientProxy* newScreen)
 	SInt32 x, y;
 	newScreen->getJumpCursorPos(x, y);
 
-	switchScreen(newScreen, x, y, false);
+	std::string layoutScreenId;
+	if (usingObjectLayout()) {
+		const etherwaver::layout::Screen* screen = getLayoutScreenForHost(getName(newScreen));
+		if (screen != NULL) {
+			layoutScreenId = screen->m_id;
+		}
+	}
+
+	switchScreen(newScreen, x, y, false, layoutScreenId);
 }
 
 float
@@ -589,6 +854,14 @@ Server::hasAnyNeighbor(BaseClientProxy* client, EDirection dir) const
 {
 	assert(client != NULL);
 
+	if (usingObjectLayout()) {
+		const etherwaver::layout::Screen* screen = getActiveLayoutScreen();
+		if (screen == NULL || screen->m_hostId != getName(client)) {
+			screen = getLayoutScreenForHost(getName(client));
+		}
+		return (screen != NULL && m_screenLayout.hasAdjacentScreen(screen->m_id, dir));
+	}
+
 	return m_config->hasNeighbor(getName(client), dir);
 }
 
@@ -599,6 +872,40 @@ Server::getNeighbor(BaseClientProxy* src,
 	// note -- must be locked on entry
 
 	assert(src != NULL);
+
+	if (usingObjectLayout()) {
+		const etherwaver::layout::Screen* sourceScreen = getActiveLayoutScreen();
+		if (sourceScreen == NULL || sourceScreen->m_hostId != getName(src)) {
+			sourceScreen = getLayoutScreenForHost(getName(src));
+		}
+		if (sourceScreen == NULL) {
+			return NULL;
+		}
+
+		const etherwaver::layout::Screen* destinationScreen =
+			m_screenLayout.findScreenInDirection(sourceScreen->m_id, dir);
+		if (destinationScreen == NULL) {
+			return NULL;
+		}
+
+		BaseClientProxy* dst = getClientForLayoutScreen(*destinationScreen);
+		if (dst == NULL) {
+			return NULL;
+		}
+
+		SInt32 sx, sy, sw, sh;
+		SInt32 dx, dy, dw, dh;
+		src->getShape(sx, sy, sw, sh);
+		dst->getShape(dx, dy, dw, dh);
+
+		const int globalX = toGlobalCoordinate(x, sx, sw, sourceScreen->m_x, sourceScreen->m_width);
+		const int globalY = toGlobalCoordinate(y, sy, sh, sourceScreen->m_y, sourceScreen->m_height);
+		x = clampInt(toClientCoordinate(globalX, destinationScreen->m_x, destinationScreen->m_width, dx, dw),
+		             dx, dx + dw - 1);
+		y = clampInt(toClientCoordinate(globalY, destinationScreen->m_y, destinationScreen->m_height, dy, dh),
+		             dy, dy + dh - 1);
+		return dst;
+	}
 
 	// get source screen name
     std::string srcName = getName(src);
@@ -647,6 +954,10 @@ Server::mapToNeighbor(BaseClientProxy* src,
 	// note -- must be locked on entry
 
 	assert(src != NULL);
+
+	if (usingObjectLayout()) {
+		return getNeighbor(src, srcSide, x, y);
+	}
 
 	// get the first neighbor
 	BaseClientProxy* dst = getNeighbor(src, srcSide, x, y);
@@ -753,6 +1064,47 @@ Server::avoidJumpZone(BaseClientProxy* dst,
 {
 	// we only need to avoid jump zones on the primary screen
 	if (dst != m_primaryClient) {
+		return;
+	}
+
+	if (usingObjectLayout()) {
+		const etherwaver::layout::Screen* screen = getActiveLayoutScreen();
+		if (screen == NULL) {
+			return;
+		}
+
+		SInt32 dx, dy, dw, dh;
+		dst->getShape(dx, dy, dw, dh);
+		SInt32 z = getJumpZoneSize(dst);
+
+		switch (dir) {
+		case kLeft:
+			if (m_screenLayout.hasAdjacentScreen(screen->m_id, kRight) &&
+				x > dx + dw - 1 - z) {
+				x = dx + dw - 1 - z;
+			}
+			break;
+		case kRight:
+			if (m_screenLayout.hasAdjacentScreen(screen->m_id, kLeft) &&
+				x < dx + z) {
+				x = dx + z;
+			}
+			break;
+		case kTop:
+			if (m_screenLayout.hasAdjacentScreen(screen->m_id, kBottom) &&
+				y > dy + dh - 1 - z) {
+				y = dy + dh - 1 - z;
+			}
+			break;
+		case kBottom:
+			if (m_screenLayout.hasAdjacentScreen(screen->m_id, kTop) &&
+				y < dy + z) {
+				y = dy + z;
+			}
+			break;
+		default:
+			break;
+		}
 		return;
 	}
 
@@ -1206,6 +1558,8 @@ Server::handleShapeChanged(const Event&, void* vclient)
 		m_y = y;
 	}
 
+	reloadScreenLayout();
+
 	// handle resolution change to primary screen
 	if (client == m_primaryClient) {
 		if (client == m_active) {
@@ -1399,6 +1753,20 @@ Server::handleSwitchToScreenEvent(const Event& event, void*)
 	SwitchToScreenInfo* info =
 		static_cast<SwitchToScreenInfo*>(event.getData());
 
+	if (usingObjectLayout()) {
+		const etherwaver::layout::Screen* screen = m_screenLayout.getScreen(info->m_screen);
+		if (screen != NULL) {
+			BaseClientProxy* client = getClientForLayoutScreen(*screen);
+			if (client != NULL) {
+				SInt32 x = 0;
+				SInt32 y = 0;
+				client->getJumpCursorPos(x, y);
+				switchScreen(client, x, y, false, screen->m_id);
+				return;
+			}
+		}
+	}
+
 	ClientList::const_iterator index = m_clients.find(info->m_screen);
 	if (index == m_clients.end()) {
 		LOG((CLOG_DEBUG1 "screen \"%s\" not active", info->m_screen));
@@ -1411,6 +1779,20 @@ Server::handleSwitchToScreenEvent(const Event& event, void*)
 void
 Server::handleToggleScreenEvent(const Event& event, void*)
 {
+  if (usingObjectLayout()) {
+    const etherwaver::layout::Screen* next = m_screenLayout.getNextScreen(m_activeLayoutScreenId);
+    if (next != NULL) {
+      BaseClientProxy* client = getClientForLayoutScreen(*next);
+      if (client != NULL) {
+        SInt32 x = 0;
+        SInt32 y = 0;
+        client->getJumpCursorPos(x, y);
+        switchScreen(client, x, y, false, next->m_id);
+      }
+    }
+    return;
+  }
+
   std::string current = getName(m_active);
   ClientList::const_iterator index = m_clients.find(current);
   if (index == m_clients.end()) {
@@ -1431,6 +1813,24 @@ Server::handleSwitchInDirectionEvent(const Event& event, void*)
 {
 	SwitchInDirectionInfo* info =
 		static_cast<SwitchInDirectionInfo*>(event.getData());
+
+	if (usingObjectLayout()) {
+		const etherwaver::layout::Screen* activeScreen = getActiveLayoutScreen();
+		if (activeScreen != NULL) {
+			const etherwaver::layout::Screen* next =
+				m_screenLayout.findScreenInDirection(activeScreen->m_id, info->m_direction);
+			if (next != NULL) {
+				BaseClientProxy* client = getClientForLayoutScreen(*next);
+				if (client != NULL) {
+					SInt32 x = 0;
+					SInt32 y = 0;
+					client->getJumpCursorPos(x, y);
+					switchScreen(client, x, y, false, next->m_id);
+				}
+			}
+		}
+		return;
+	}
 
 	// jump to screen in chosen direction from center of this screen
 	SInt32 x = m_x, y = m_y;
@@ -1756,6 +2156,10 @@ Server::onMouseMovePrimary(SInt32 x, SInt32 y)
 	m_x       = x;
 	m_y       = y;
 
+	if (usingObjectLayout()) {
+		return trySwitchUsingObjectLayout(x, y, true);
+	}
+
 	// get screen shape
 	SInt32 ax, ay, aw, ah;
 	m_active->getShape(ax, ay, aw, ah);
@@ -1925,6 +2329,10 @@ Server::onMouseMoveSecondary(SInt32 dx, SInt32 dy)
 	// accumulate motion
 	m_x      += dx;
 	m_y      += dy;
+
+	if (usingObjectLayout() && trySwitchUsingObjectLayout(m_x, m_y, false)) {
+		return;
+	}
 
 	// get screen shape
 	SInt32 ax, ay, aw, ah;
@@ -2129,6 +2537,7 @@ Server::addClient(BaseClientProxy* client)
 	client->setJumpCursorPos(x, y);
 
 	// tell primary client about the active sides
+	reloadScreenLayout();
 	m_primaryClient->reconfigure(getActivePrimarySides());
 
 	return true;
@@ -2154,6 +2563,7 @@ Server::removeClient(BaseClientProxy* client)
 	// remove from list
 	m_clients.erase(getName(client));
 	m_clientSet.erase(i);
+	reloadScreenLayout();
 
 	return true;
 }
@@ -2266,6 +2676,11 @@ Server::forceLeaveClient(BaseClientProxy* client)
 
 		// cut over
 		m_active = m_primaryClient;
+		const etherwaver::layout::Screen* primaryScreen =
+			getLayoutScreenForHost(getName(m_primaryClient));
+		if (primaryScreen != NULL) {
+			m_activeLayoutScreenId = primaryScreen->m_id;
+		}
 
 		// enter new screen (unless we already have because of the
 		// screen saver)
@@ -2412,4 +2827,208 @@ Server::dragInfoReceived(UInt32 fileNum, std::string content)
 	DragInformation::parseDragInfo(m_fakeDragFileList, fileNum, content);
 
 	m_screen->startDraggingFiles(m_fakeDragFileList);
+}
+
+void Server::httpLoop()
+{
+    while (m_running) {
+        ArchSocket socket = ARCH->acceptSocket(m_httpListener, nullptr);
+
+        if (!socket) {
+            // prevent 100% CPU when no clients connect
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
+
+        try {
+            std::string request;
+            char requestBuf[4096];
+            size_t bytesRead = ARCH->readSocket(socket, requestBuf, sizeof(requestBuf));
+            if (bytesRead == 0) {
+                ARCH->closeSocket(socket);
+                continue;
+            }
+            request.append(requestBuf, bytesRead);
+
+            size_t headerEnd = request.find("\r\n\r\n");
+            size_t headerSize = 4;
+            if (headerEnd == std::string::npos) {
+                headerEnd = request.find("\n\n");
+                headerSize = 2;
+            }
+
+            while (headerEnd == std::string::npos && request.size() < 1024 * 1024) {
+                bytesRead = ARCH->readSocket(socket, requestBuf, sizeof(requestBuf));
+                if (bytesRead == 0) {
+                    break;
+                }
+                request.append(requestBuf, bytesRead);
+                headerEnd = request.find("\r\n\r\n");
+                headerSize = 4;
+                if (headerEnd == std::string::npos) {
+                    headerEnd = request.find("\n\n");
+                    headerSize = 2;
+                }
+            }
+
+            std::string method;
+            std::string path;
+            std::string requestLine;
+            std::string headers;
+            std::string body;
+
+            if (headerEnd != std::string::npos) {
+                headers = request.substr(0, headerEnd);
+                body = request.substr(headerEnd + headerSize);
+            }
+            else {
+                headers = request;
+            }
+
+            size_t lineEnd = headers.find("\r\n");
+            if (lineEnd == std::string::npos) {
+                lineEnd = headers.find('\n');
+            }
+            if (lineEnd != std::string::npos) {
+                requestLine = headers.substr(0, lineEnd);
+                std::istringstream iss(requestLine);
+                iss >> method >> path;
+            }
+
+            size_t contentLength = 0;
+            {
+                std::istringstream hs(headers);
+                std::string line;
+                // skip request line
+                std::getline(hs, line);
+                while (std::getline(hs, line)) {
+                    if (!line.empty() && line[line.size() - 1] == '\r') {
+                        line.erase(line.size() - 1);
+                    }
+                    std::string lowerLine = line;
+                    for (size_t i = 0; i < lowerLine.size(); ++i) {
+                        lowerLine[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(lowerLine[i])));
+                    }
+                    if (lowerLine.compare(0, 15, "content-length:") == 0) {
+                        std::string lenStr = line.substr(15);
+                        size_t firstNotSpace = lenStr.find_first_not_of(" \t");
+                        if (firstNotSpace != std::string::npos) {
+                            lenStr = lenStr.substr(firstNotSpace);
+                            contentLength = static_cast<size_t>(std::strtoul(lenStr.c_str(), NULL, 10));
+                        }
+                        break;
+                    }
+                }
+            }
+
+            while (body.size() < contentLength && request.size() < 2 * 1024 * 1024) {
+                bytesRead = ARCH->readSocket(socket, requestBuf, sizeof(requestBuf));
+                if (bytesRead == 0) {
+                    break;
+                }
+                body.append(requestBuf, bytesRead);
+            }
+
+            if (contentLength < body.size()) {
+                body.resize(contentLength);
+            }
+
+            // remove query string if present
+            size_t queryPos = path.find('?');
+            if (queryPos != std::string::npos) {
+                path = path.substr(0, queryPos);
+            }
+
+            const std::string switchPrefix = "/set/screen/";
+            const bool isConfigRequest = (path == "/get/config" || path == "/config");
+            const bool isSetConfigRequest = (path == "/set/config" && method == "POST");
+            bool isSwitchRequest = (path.compare(0, switchPrefix.size(), switchPrefix) == 0);
+            std::string responseBody;
+            std::string contentType;
+
+            if (isSwitchRequest) {
+                std::string requestedScreen = path.substr(switchPrefix.size());
+                bool found = false;
+
+                if (!requestedScreen.empty()) {
+                    std::string canonical = m_config->getCanonicalName(requestedScreen);
+                    if (!canonical.empty()) {
+                        requestedScreen = canonical;
+                    }
+
+                    ClientList::const_iterator index = m_clients.find(requestedScreen);
+                    if (index != m_clients.end()) {
+                        jumpToScreen(index->second);
+                        found = true;
+                    }
+                }
+
+                responseBody = found ? "ok" : "false";
+                contentType = "text/plain";
+            }
+            else if (isSetConfigRequest) {
+                bool ok = false;
+                try {
+                    Config validatedConfig(m_events);
+                    std::istringstream testStream(body);
+                    testStream >> validatedConfig;
+
+                    if (validatedConfig.isScreen(m_primaryClient->getName())) {
+                        std::string configPath = m_args.m_configFile.empty() ? "http_set_config.conf" : m_args.m_configFile;
+                        std::ofstream configOut(configPath.c_str(), std::ios::binary | std::ios::trunc);
+                        if (configOut.is_open()) {
+                            configOut.write(body.data(), static_cast<std::streamsize>(body.size()));
+                            configOut.close();
+
+                            if (!configOut.fail()) {
+                                std::istringstream applyStream(body);
+                                applyStream >> *m_config;
+                                ok = setConfig(*m_config);
+                            }
+                        }
+                    }
+                }
+                catch (...) {
+                    ok = false;
+                }
+
+                responseBody = ok ? "ok" : "false";
+                contentType = "text/plain";
+            }
+            else if (isConfigRequest) {
+                std::ostringstream out;
+                out << *m_config;
+                responseBody = out.str();
+                contentType = "text/plain";
+            }
+            else {
+                std::string current;
+                std::string currentIp;
+
+                {
+                    std::lock_guard<std::mutex> lock(m_mutex);
+                    current = m_currentHost;
+                    currentIp = m_current_ip;
+                }
+
+                responseBody = "{\"server\": {\"current\":\"" + current + "\", \"ip\":\"" + currentIp + "\"}}";
+                contentType = "application/json";
+            }
+
+            std::string response =
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: " + contentType + "\r\n"
+                "Content-Length: " + std::to_string(responseBody.size()) + "\r\n"
+                "Connection: close\r\n\r\n" + responseBody;
+
+            ARCH->writeSocket(socket,
+                              (const UInt8*)response.data(),
+                              response.size());
+        }
+        catch (...) {
+            // Ignore errors
+        }
+
+        ARCH->closeSocket(socket);
+    }
 }

@@ -19,9 +19,12 @@
 #pragma once
 
 #include "barrier/clipboard_types.h"
+#include "barrier/protocol_types.h"
 #include "base/Event.h"
 #include "base/EventTypes.h"
 #include "common/IInterface.h"
+
+#include <vector>
 
 class IClipboard;
 
@@ -60,6 +63,8 @@ public:
     */
     virtual void        getShape(SInt32& x, SInt32& y,
                             SInt32& width, SInt32& height) const = 0;
+
+    virtual void        getScreens(std::vector<ClientScreenInfo>& screens) const = 0;
 
     //! Get cursor position
     /*!

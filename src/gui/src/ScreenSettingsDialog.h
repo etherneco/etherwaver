@@ -46,6 +46,10 @@ class ScreenSettingsDialog : public QDialog, public Ui::ScreenSettingsDialogBase
         void on_m_pListAliases_itemSelectionChanged();
 
     private:
+        QString composedScreenName() const;
+        void splitScreenName(const QString& fullName, QString& baseName, int& number) const;
+
+    private:
         Screen* m_pScreen;
 };
 

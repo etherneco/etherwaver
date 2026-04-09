@@ -247,6 +247,12 @@ void ServerConfig::loadSettings()
     settings().endArray();
 
     settings().endGroup();
+
+    // ensure the server's own screen is always present in the config
+    int serverIndex = -1;
+    if (!m_ServerName.isEmpty() && !findScreenName(m_ServerName, serverIndex)) {
+        fixNoServer(m_ServerName, serverIndex);
+    }
 }
 
 int ServerConfig::adjacentScreenIndex(int idx, int deltaColumn, int deltaRow) const

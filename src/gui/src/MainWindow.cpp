@@ -96,6 +96,21 @@ static const char* barrierIconNames[] =
 
 static const char* barrierLargeIcon = ":/res/icons/256x256/barrier.ico";
 
+namespace {
+
+QString persistentGuiStatePath()
+{
+    const QString profilePath = QString::fromStdString(barrier::DataDirectories::profile().u8string());
+    QDir profileDir(profilePath);
+    if (!profileDir.exists()) {
+        profileDir.mkpath(".");
+    }
+
+    return profileDir.filePath("gui-state.ini");
+}
+
+}
+
 MainWindow::MainWindow(QSettings& settings, AppConfig& appConfig) :
     m_Settings(settings),
     m_AppConfig(&appConfig),
@@ -288,15 +303,33 @@ void MainWindow::createMenuBar()
 
 void MainWindow::loadSettings()
 {
+    QSettings persistentSettings(persistentGuiStatePath(), QSettings::IniFormat);
+
     // the next two must come BEFORE loading groupServerChecked and groupClientChecked or
     // disabling and/or enabling the right widgets won't automatically work
-    m_pRadioExternalConfig->setChecked(settings().value("useExternalConfig", false).toBool());
-    m_pRadioInternalConfig->setChecked(settings().value("useInternalConfig", true).toBool());
+    m_pRadioExternalConfig->setChecked(
+        persistentSettings.value(
+            "useExternalConfig",
+            settings().value("useExternalConfig", false)).toBool());
+    m_pRadioInternalConfig->setChecked(
+        persistentSettings.value(
+            "useInternalConfig",
+            settings().value("useInternalConfig", true)).toBool());
 
-    m_pGroupServer->setChecked(settings().value("groupServerChecked", false).toBool());
-    m_pLineEditConfigFile->setText(settings().value("configFile", QDir::homePath() + "/" + barrierConfigName).toString());
-    m_pGroupClient->setChecked(settings().value("groupClientChecked", true).toBool());
-    m_pLineEditHostname->setText(settings().value("serverHostname").toString());
+    m_pGroupServer->setChecked(
+        persistentSettings.value(
+            "groupServerChecked",
+            settings().value("groupServerChecked", false)).toBool());
+    m_pLineEditConfigFile->setText(
+        persistentSettings.value(
+            "configFile",
+            settings().value("configFile", QDir::homePath() + "/" + barrierConfigName)).toString());
+    m_pGroupClient->setChecked(
+        persistentSettings.value(
+            "groupClientChecked",
+            settings().value("groupClientChecked", true)).toBool());
+    m_pLineEditHostname->setText(
+        persistentSettings.value("serverHostname", appConfig().serverHostname()).toString().trimmed());
 }
 
 void MainWindow::initConnections()
@@ -311,15 +344,26 @@ void MainWindow::initConnections()
 
 void MainWindow::saveSettings()
 {
+    QSettings persistentSettings(persistentGuiStatePath(), QSettings::IniFormat);
+
     // program settings
     settings().setValue("groupServerChecked", m_pGroupServer->isChecked());
     settings().setValue("useExternalConfig", m_pRadioExternalConfig->isChecked());
     settings().setValue("configFile", m_pLineEditConfigFile->text());
     settings().setValue("useInternalConfig", m_pRadioInternalConfig->isChecked());
     settings().setValue("groupClientChecked", m_pGroupClient->isChecked());
-    settings().setValue("serverHostname", m_pLineEditHostname->text());
+    appConfig().setServerHostname(m_pLineEditHostname->text());
+    settings().setValue("serverHostname", appConfig().serverHostname());
 
     settings().sync();
+
+    persistentSettings.setValue("groupServerChecked", m_pGroupServer->isChecked());
+    persistentSettings.setValue("useExternalConfig", m_pRadioExternalConfig->isChecked());
+    persistentSettings.setValue("configFile", m_pLineEditConfigFile->text());
+    persistentSettings.setValue("useInternalConfig", m_pRadioInternalConfig->isChecked());
+    persistentSettings.setValue("groupClientChecked", m_pGroupClient->isChecked());
+    persistentSettings.setValue("serverHostname", appConfig().serverHostname());
+    persistentSettings.sync();
 }
 
 void MainWindow::setIcon(qBarrierState state)
@@ -502,6 +546,9 @@ void MainWindow::proofreadInfo()
 
 void MainWindow::startBarrier()
 {
+    saveSettings();
+    appConfig().saveSettings();
+
     bool desktopMode = appConfig().processMode() == Desktop;
     bool serviceMode = appConfig().processMode() == Service;
 
@@ -611,6 +658,7 @@ void MainWindow::startBarrier()
 bool MainWindow::clientArgs(QStringList& args, QString& app)
 {
     app = appPath(appConfig().barriercName());
+    const QString hostname = m_pLineEditHostname->text().trimmed();
 
     if (!QFile::exists(app))
     {
@@ -644,7 +692,7 @@ bool MainWindow::clientArgs(QStringList& args, QString& app)
             args << "[" + serverIp + "]:" + QString::number(appConfig().port());
             return true;
         }
-    } else if (m_pLineEditHostname->text().isEmpty()) {
+    } else if (hostname.isEmpty()) {
         show();
         if (!m_SuppressEmptyServerWarning) {
             QMessageBox::warning(this, tr("Hostname is empty"),
@@ -653,7 +701,7 @@ bool MainWindow::clientArgs(QStringList& args, QString& app)
         return false;
     }
 
-    args << "[" + m_pLineEditHostname->text() + "]:" + QString::number(appConfig().port());
+    args << "[" + hostname + "]:" + QString::number(appConfig().port());
 
     return true;
 }

@@ -138,6 +138,8 @@ const QString &AppConfig::language() const { return m_Language; }
 
 bool AppConfig::startedBefore() const { return m_StartedBefore; }
 
+const QString& AppConfig::serverHostname() const { return m_ServerHostname; }
+
 bool AppConfig::autoConfig() const { return m_AutoConfig; }
 
 void AppConfig::loadSettings()
@@ -151,6 +153,7 @@ void AppConfig::loadSettings()
     m_WizardLastRun = settings().value("wizardLastRun", 0).toInt();
     m_Language = settings().value("language", QLocale::system().name()).toString();
     m_StartedBefore = settings().value("startedBefore", false).toBool();
+    m_ServerHostname = settings().value("serverHostname").toString().trimmed();
     m_AutoConfig = settings().value("autoConfig", true).toBool();
     QVariant elevateMode = settings().value("elevateModeEnum");
     if (!elevateMode.isValid()) {
@@ -180,6 +183,7 @@ void AppConfig::saveSettings()
     settings().setValue("wizardLastRun", kWizardVersion);
     settings().setValue("language", m_Language);
     settings().setValue("startedBefore", m_StartedBefore);
+    settings().setValue("serverHostname", m_ServerHostname);
     settings().setValue("autoConfig", m_AutoConfig);
     // Refer to enum ElevateMode declaration for insight in to why this
     // flag is mapped this way
@@ -215,6 +219,8 @@ void AppConfig::setWizardHasRun() { m_WizardLastRun = kWizardVersion; }
 void AppConfig::setLanguage(const QString language) { m_Language = language; }
 
 void AppConfig::setStartedBefore(bool b) { m_StartedBefore = b; }
+
+void AppConfig::setServerHostname(const QString& hostname) { m_ServerHostname = hostname.trimmed(); }
 
 void AppConfig::setElevateMode(ElevateMode em) { m_ElevateMode = em; }
 

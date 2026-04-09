@@ -26,7 +26,7 @@
 const char AppConfig::m_BarriersName[] = "wavers.exe";
 const char AppConfig::m_BarriercName[] = "waverc.exe";
 const char AppConfig::m_BarrierLogDir[] = "log/";
-#define DEFAULT_PROCESS_MODE Service
+#define DEFAULT_PROCESS_MODE Desktop
 #else
 const char AppConfig::m_BarriersName[] = "wavers";
 const char AppConfig::m_BarriercName[] = "waverc";

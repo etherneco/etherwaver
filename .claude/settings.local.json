@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Bash(cl)",
+      "Bash(where msbuild:*)",
+      "Bash(gcc --version)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "Read(//c/Qt/5.15.2//**)"
+    ]
+  }
+}

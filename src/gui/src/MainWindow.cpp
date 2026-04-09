@@ -137,11 +137,13 @@ MainWindow::MainWindow(QSettings& settings, AppConfig& appConfig) :
     m_pLabelIpAddresses->setText(getIPAddresses());
 
 #if defined(Q_OS_WIN)
-    // ipc must always be enabled, so that we can disable command when switching to desktop mode.
     connect(&m_IpcClient, SIGNAL(readLogLine(const QString&)), this, SLOT(appendLogRaw(const QString&)));
     connect(&m_IpcClient, SIGNAL(errorMessage(const QString&)), this, SLOT(appendLogError(const QString&)));
     connect(&m_IpcClient, SIGNAL(infoMessage(const QString&)), this, SLOT(appendLogInfo(const QString&)));
-    m_IpcClient.connectToHost();
+    // only connect to IPC daemon when running in Service mode
+    if (appConfig.processMode() == Service) {
+        m_IpcClient.connectToHost();
+    }
 #endif
 
     // change default size based on os
@@ -557,7 +559,7 @@ void MainWindow::startBarrier()
     // launched the process (e.g. when launched with elevation). setting the
     // profile dir on launch ensures it uses the same profile dir is used
     // no matter how its relaunched.
-    args << "--profile-dir" << QString::fromStdString("\"" + barrier::DataDirectories::profile().u8string() + "\"");
+    args << "--profile-dir" << QString::fromStdString(barrier::DataDirectories::profile().u8string());
 #endif
 
     if ((barrier_type() == BarrierType::Client && !clientArgs(args, app))
@@ -617,11 +619,6 @@ bool MainWindow::clientArgs(QStringList& args, QString& app)
                              tr("The executable for the waver client does not exist."));
         return false;
     }
-
-#if defined(Q_OS_WIN)
-    // wrap in quotes so a malicious user can't start \Program.exe as admin.
-    app = QString("\"%1\"").arg(app);
-#endif
 
     if (appConfig().logToFile())
     {
@@ -726,11 +723,6 @@ bool MainWindow::serverArgs(QStringList& args, QString& app)
         return false;
     }
 
-#if defined(Q_OS_WIN)
-    // wrap in quotes so a malicious user can't start \Program.exe as admin.
-    app = QString("\"%1\"").arg(app);
-#endif
-
     if (appConfig().logToFile())
     {
         appConfig().persistLogDir();
@@ -743,10 +735,6 @@ bool MainWindow::serverArgs(QStringList& args, QString& app)
     }
 
     QString configFilename = this->configFilename();
-#if defined(Q_OS_WIN)
-    // wrap in quotes in case username contains spaces.
-    configFilename = QString("\"%1\"").arg(configFilename);
-#endif
     args << "-c" << configFilename << "--address" << address();
 
     return true;

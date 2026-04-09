@@ -102,10 +102,24 @@ bool ServerConfig::saveLayout(const QString& configFileName) const
         }
         first = false;
 
+        // Extract base hostname from "hostname-N" format used for multi-monitor screens.
+        // Screen IDs use the full name (e.g. "nawa_kompa-1") while the host field must
+        // match the actual hostname the client connects with (e.g. "nawa_kompa").
+        QString hostName = screen.name();
+        {
+            QRegExp pattern("^(.*?)-(\\d+)$");
+            if (pattern.exactMatch(hostName)) {
+                const QString base = pattern.cap(1);
+                if (!base.isEmpty()) {
+                    hostName = base;
+                }
+            }
+        }
+
         const QSize size = screen.size().isValid() ? screen.size() : QSize(240, 140);
         out << "    {\n"
             << "      \"id\": \"" << screen.name() << "\",\n"
-            << "      \"host\": \"" << screen.name() << "\",\n"
+            << "      \"host\": \"" << hostName << "\",\n"
             << "      \"name\": \"" << screen.name() << "\",\n"
             << "      \"x\": " << screen.position().x() << ",\n"
             << "      \"y\": " << screen.position().y() << ",\n"

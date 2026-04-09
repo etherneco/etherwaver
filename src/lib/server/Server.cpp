@@ -400,11 +400,18 @@ Server::adoptClient(BaseClientProxy* client)
 							new TMethodEventJob<Server>(this,
 								&Server::handleClientDisconnected, client));
 
-	// name must be in our configuration
+	// name must be in our configuration or in the object layout as a host
 	if (!m_config->isScreen(client->getName())) {
-		LOG((CLOG_WARN "unrecognised client name \"%s\", check server config", client->getName().c_str()));
-		closeClient(client, kMsgEUnknown);
-		return;
+		// When using an object layout, accept clients whose hostname matches a
+		// host entry in the layout.  This supports multi-monitor setups where
+		// screen IDs (e.g. "nawa_kompa-1") differ from the actual hostname
+		// ("nawa_kompa") that the client connects with.
+		if (!usingObjectLayout() ||
+		    m_screenLayout.getFirstScreenForHost(client->getName()) == NULL) {
+			LOG((CLOG_WARN "unrecognised client name \"%s\", check server config", client->getName().c_str()));
+			closeClient(client, kMsgEUnknown);
+			return;
+		}
 	}
 
 	// add client to client list

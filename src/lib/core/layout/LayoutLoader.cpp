@@ -20,6 +20,12 @@ public:
         m_input(input),
         m_pos(0)
     {
+        if (m_input.size() >= 3 &&
+            static_cast<unsigned char>(m_input[0]) == 0xEF &&
+            static_cast<unsigned char>(m_input[1]) == 0xBB &&
+            static_cast<unsigned char>(m_input[2]) == 0xBF) {
+            m_pos = 3;
+        }
     }
 
     etherwaver::layout::ScreenManager parseLayout()
@@ -169,55 +175,74 @@ private:
             return;
         }
         if (peek('{')) {
-            expect('{');
-            int depth = 1;
-            while (depth > 0 && m_pos < m_input.size()) {
-                if (m_input[m_pos] == '"') {
-                    parseString();
-                    continue;
-                }
-                if (m_input[m_pos] == '{') {
-                    ++depth;
-                }
-                else if (m_input[m_pos] == '}') {
-                    --depth;
-                }
-                ++m_pos;
-            }
-            if (depth != 0) {
-                throw std::runtime_error("unterminated JSON object");
-            }
+            skipObject();
             return;
         }
         if (peek('[')) {
-            expect('[');
-            int depth = 1;
-            while (depth > 0 && m_pos < m_input.size()) {
-                if (m_input[m_pos] == '"') {
-                    parseString();
-                    continue;
-                }
-                if (m_input[m_pos] == '[') {
-                    ++depth;
-                }
-                else if (m_input[m_pos] == ']') {
-                    --depth;
-                }
-                ++m_pos;
-            }
-            if (depth != 0) {
-                throw std::runtime_error("unterminated JSON array");
-            }
+            skipArray();
             return;
         }
         if (peek('-') || isDigit(current())) {
-            parseInt();
+            skipNumber();
             return;
         }
         if (matchKeyword("true") || matchKeyword("false") || matchKeyword("null")) {
             return;
         }
         throw std::runtime_error("unsupported JSON value");
+    }
+
+    void skipObject()
+    {
+        expect('{');
+        for (;;) {
+            skipWhitespace();
+            if (peek('}')) {
+                expect('}');
+                return;
+            }
+
+            parseString();
+            skipWhitespace();
+            expect(':');
+            skipValue();
+            skipWhitespace();
+
+            if (peek(',')) {
+                expect(',');
+                continue;
+            }
+            if (peek('}')) {
+                expect('}');
+                return;
+            }
+            throw std::runtime_error("invalid JSON object");
+        }
+    }
+
+    void skipArray()
+    {
+        expect('[');
+        for (;;) {
+            skipWhitespace();
+            if (peek(']')) {
+                expect(']');
+                return;
+            }
+
+            skipValue();
+            skipWhitespace();
+
+            if (peek(',')) {
+                expect(',');
+                continue;
+            }
+            if (peek(']')) {
+                expect(']');
+                return;
+            }
+            throw std::runtime_error("invalid JSON array");
+        }
     }
 
     std::string parseString()
@@ -279,6 +304,41 @@ private:
             ++m_pos;
         }
         return std::atoi(m_input.substr(start, m_pos - start).c_str());
+    }
+
+    void skipNumber()
+    {
+        skipWhitespace();
+        if (peek('-')) {
+            ++m_pos;
+        }
+        if (!isDigit(current())) {
+            throw std::runtime_error("expected number");
+        }
+        while (isDigit(current())) {
+            ++m_pos;
+        }
+        if (current() == '.') {
+            ++m_pos;
+            if (!isDigit(current())) {
+                throw std::runtime_error("expected number");
+            }
+            while (isDigit(current())) {
+                ++m_pos;
+            }
+        }
+        if (current() == 'e' || current() == 'E') {
+            ++m_pos;
+            if (current() == '+' || current() == '-') {
+                ++m_pos;
+            }
+            if (!isDigit(current())) {
+                throw std::runtime_error("expected number");
+            }
+            while (isDigit(current())) {
+                ++m_pos;
+            }
+        }
     }
 
     bool matchKeyword(const char* keyword)
@@ -394,7 +454,13 @@ LayoutLoader::loadLayout(const std::string& layoutPath,
 {
     std::ifstream stream(layoutPath.c_str());
     if (stream.good()) {
-        return loadJsonLayout(layoutPath);
+        try {
+            return loadJsonLayout(layoutPath);
+        }
+        catch (const std::exception&) {
+            // Fall back to the config-derived layout if the JSON file is
+            // temporarily incomplete or otherwise unreadable.
+        }
     }
 
     return convertConfigToObjectLayout(config, hostGeometries, hostScreens, primaryHostId);

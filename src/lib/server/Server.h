@@ -303,6 +303,7 @@ private:
     const etherwaver::layout::Screen*
                         getLayoutScreenForHost(const std::string& hostId) const;
     BaseClientProxy*    getClientForLayoutScreen(const etherwaver::layout::Screen& screen) const;
+    bool                switchToScreenName(const std::string& screenName);
     bool                trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion);
 
     // event handlers

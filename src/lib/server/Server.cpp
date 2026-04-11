@@ -96,6 +96,47 @@ toClientCoordinate(int globalValue, int screenOrigin, int screenSpan,
     return clientOrigin + (offset * clientSpan) / screenSpan;
 }
 
+static bool
+isScreenIndexSuffix(const std::string& name, std::string& baseName)
+{
+    const std::string::size_type dash = name.find_last_of('-');
+    if (dash == std::string::npos || dash == 0 || dash + 1 >= name.size()) {
+        return false;
+    }
+
+    for (std::string::size_type i = dash + 1; i < name.size(); ++i) {
+        if (!std::isdigit(static_cast<unsigned char>(name[i]))) {
+            return false;
+        }
+    }
+
+    baseName = name.substr(0, dash);
+    return !baseName.empty();
+}
+
+static std::string
+resolveScreenOrHostName(const Config& config, const std::string& name)
+{
+    if (config.isScreen(name)) {
+        return config.getCanonicalName(name);
+    }
+
+    for (Config::const_iterator it = config.begin(); it != config.end(); ++it) {
+        std::string baseName;
+        if (isScreenIndexSuffix(*it, baseName) && baseName == name) {
+            return *it;
+        }
+    }
+
+    return std::string();
+}
+
+static bool
+matchesScreenOrHostName(const Config& config, const std::string& name)
+{
+    return !resolveScreenOrHostName(config, name).empty();
+}
+
 } // namespace
 //
 // Server
@@ -147,7 +188,7 @@ Server::Server(
 {
 	// must have a primary client and it must have a canonical name
 	assert(m_primaryClient != NULL);
-	assert(config.isScreen(primaryClient->getName()));
+	assert(matchesScreenOrHostName(config, primaryClient->getName()));
 	assert(m_screen != NULL);
 
     std::string primaryName = getName(primaryClient);
@@ -350,7 +391,7 @@ bool
 Server::setConfig(const Config& config)
 {
 	// refuse configuration if it doesn't include the primary screen
-	if (!config.isScreen(m_primaryClient->getName())) {
+	if (!matchesScreenOrHostName(config, m_primaryClient->getName())) {
 		return false;
 	}
 
@@ -395,23 +436,18 @@ Server::adoptClient(BaseClientProxy* client)
 {
 	assert(client != NULL);
 
+    const std::string clientName = getName(client);
+
 	// watch for client disconnection
 	m_events->adoptHandler(m_events->forClientProxy().disconnected(), client,
 							new TMethodEventJob<Server>(this,
 								&Server::handleClientDisconnected, client));
 
-	// name must be in our configuration or in the object layout as a host
-	if (!m_config->isScreen(client->getName())) {
-		// When using an object layout, accept clients whose hostname matches a
-		// host entry in the layout.  This supports multi-monitor setups where
-		// screen IDs (e.g. "nawa_kompa-1") differ from the actual hostname
-		// ("nawa_kompa") that the client connects with.
-		if (!usingObjectLayout() ||
-		    m_screenLayout.getFirstScreenForHost(client->getName()) == NULL) {
-			LOG((CLOG_WARN "unrecognised client name \"%s\", check server config", client->getName().c_str()));
-			closeClient(client, kMsgEUnknown);
-			return;
-		}
+	// name must resolve to a configured screen or a known object-layout host
+	if (clientName.empty()) {
+		LOG((CLOG_WARN "unrecognised client name \"%s\", check server config", client->getName().c_str()));
+		closeClient(client, kMsgEUnknown);
+		return;
 	}
 
 	// add client to client list
@@ -470,11 +506,39 @@ Server::getClients(std::vector<std::string>& list) const
 
 std::string Server::getName(const BaseClientProxy* client) const
 {
-    std::string name = m_config->getCanonicalName(client->getName());
-	if (name.empty()) {
-		name = client->getName();
-	}
-	return name;
+    const std::string rawName = client->getName();
+    std::string name = m_config->getCanonicalName(rawName);
+    if (!name.empty()) {
+        return name;
+    }
+
+    if (m_config->isScreen(rawName)) {
+        return rawName;
+    }
+
+    std::string baseName;
+    if (isScreenIndexSuffix(rawName, baseName)) {
+        name = m_config->getCanonicalName(baseName);
+        if (!name.empty()) {
+            return name;
+        }
+
+        if (m_config->isScreen(baseName)) {
+            return baseName;
+        }
+
+        if (usingObjectLayout() &&
+            m_screenLayout.getFirstScreenForHost(baseName) != NULL) {
+            return baseName;
+        }
+    }
+
+    if (usingObjectLayout() &&
+        m_screenLayout.getFirstScreenForHost(rawName) != NULL) {
+        return rawName;
+    }
+
+    return std::string();
 }
 
 std::string
@@ -520,6 +584,20 @@ Server::getLayoutScreenForHost(const std::string& hostId) const
     if (!usingObjectLayout()) {
         return NULL;
     }
+
+    const std::string primaryScreenId = hostId + ":screen0";
+    const std::vector<etherwaver::layout::Screen>& screens = m_screenLayout.getScreens();
+    for (std::vector<etherwaver::layout::Screen>::const_iterator it = screens.begin();
+         it != screens.end(); ++it) {
+        if (it->m_hostId != hostId) {
+            continue;
+        }
+        if (it->m_id == primaryScreenId || it->m_name == "screen0" ||
+            it->m_name == primaryScreenId) {
+            return &(*it);
+        }
+    }
+
     return m_screenLayout.getFirstScreenForHost(hostId);
 }
 
@@ -531,6 +609,42 @@ Server::getClientForLayoutScreen(const etherwaver::layout::Screen& screen) const
         return NULL;
     }
     return it->second;
+}
+
+bool
+Server::switchToScreenName(const std::string& screenName)
+{
+    if (screenName.empty()) {
+        return false;
+    }
+
+    if (usingObjectLayout()) {
+        const etherwaver::layout::Screen* screen = m_screenLayout.getScreen(screenName);
+        if (screen != NULL) {
+            BaseClientProxy* client = getClientForLayoutScreen(*screen);
+            if (client != NULL) {
+                SInt32 x = 0;
+                SInt32 y = 0;
+                client->getJumpCursorPos(x, y);
+                switchScreen(client, x, y, false, screen->m_id);
+                return true;
+            }
+
+            ClientList::const_iterator host = m_clients.find(screen->m_hostId);
+            if (host != m_clients.end()) {
+                jumpToScreen(host->second);
+                return true;
+            }
+        }
+    }
+
+    ClientList::const_iterator client = m_clients.find(screenName);
+    if (client != m_clients.end()) {
+        jumpToScreen(client->second);
+        return true;
+    }
+
+    return false;
 }
 
 void
@@ -1760,26 +1874,8 @@ Server::handleSwitchToScreenEvent(const Event& event, void*)
 	SwitchToScreenInfo* info =
 		static_cast<SwitchToScreenInfo*>(event.getData());
 
-	if (usingObjectLayout()) {
-		const etherwaver::layout::Screen* screen = m_screenLayout.getScreen(info->m_screen);
-		if (screen != NULL) {
-			BaseClientProxy* client = getClientForLayoutScreen(*screen);
-			if (client != NULL) {
-				SInt32 x = 0;
-				SInt32 y = 0;
-				client->getJumpCursorPos(x, y);
-				switchScreen(client, x, y, false, screen->m_id);
-				return;
-			}
-		}
-	}
-
-	ClientList::const_iterator index = m_clients.find(info->m_screen);
-	if (index == m_clients.end()) {
+	if (!switchToScreenName(info->m_screen)) {
 		LOG((CLOG_DEBUG1 "screen \"%s\" not active", info->m_screen));
-	}
-	else {
-		jumpToScreen(index->second);
 	}
 }
 
@@ -2963,11 +3059,7 @@ void Server::httpLoop()
                         requestedScreen = canonical;
                     }
 
-                    ClientList::const_iterator index = m_clients.find(requestedScreen);
-                    if (index != m_clients.end()) {
-                        jumpToScreen(index->second);
-                        found = true;
-                    }
+                    found = switchToScreenName(requestedScreen);
                 }
 
                 responseBody = found ? "ok" : "false";
@@ -2980,7 +3072,7 @@ void Server::httpLoop()
                     std::istringstream testStream(body);
                     testStream >> validatedConfig;
 
-                    if (validatedConfig.isScreen(m_primaryClient->getName())) {
+                    if (matchesScreenOrHostName(validatedConfig, m_primaryClient->getName())) {
                         std::string configPath = m_args.m_configFile.empty() ? "http_set_config.conf" : m_args.m_configFile;
                         std::ofstream configOut(configPath.c_str(), std::ios::binary | std::ios::trunc);
                         if (configOut.is_open()) {

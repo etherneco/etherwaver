@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <map>
 #include <queue>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
@@ -105,6 +106,10 @@ private:
         std::string id;
         std::string host;
         std::string name;
+        std::string leftLink;
+        std::string rightLink;
+        std::string topLink;
+        std::string bottomLink;
         int x = 0;
         int y = 0;
         int width = 0;
@@ -144,6 +149,9 @@ private:
             else if (key == "height") {
                 height = parseInt();
             }
+            else if (key == "links") {
+                parseLinks(leftLink, rightLink, topLink, bottomLink);
+            }
             else {
                 skipValue();
             }
@@ -164,7 +172,82 @@ private:
             throw std::runtime_error("screen object is missing required fields");
         }
 
-        return etherwaver::layout::Screen(id, host, name, x, y, width, height);
+        if (name.empty()) {
+            if (id == host) {
+                name = "screen0";
+            }
+            else {
+                const std::string hostPrefix = host + ":";
+                if (id.compare(0, hostPrefix.size(), hostPrefix) == 0) {
+                    name = id.substr(hostPrefix.size());
+                }
+            }
+        }
+
+        if (id == host) {
+            id = host + ":" + (name.empty() ? "screen0" : name);
+        }
+        else if (id.find(':') == std::string::npos && !name.empty()) {
+            id = host + ":" + name;
+        }
+
+        return etherwaver::layout::Screen(id, host, name, x, y, width, height,
+                                          leftLink, rightLink, topLink, bottomLink);
+    }
+
+    void parseLinks(std::string& leftLink,
+                    std::string& rightLink,
+                    std::string& topLink,
+                    std::string& bottomLink)
+    {
+        expect('{');
+        for (;;) {
+            skipWhitespace();
+            if (peek('}')) {
+                expect('}');
+                break;
+            }
+
+            const std::string key = parseString();
+            skipWhitespace();
+            expect(':');
+            skipWhitespace();
+
+            std::string value;
+            if (peek('"')) {
+                value = parseString();
+            }
+            else if (matchKeyword("null")) {
+                value.clear();
+            }
+            else {
+                skipValue();
+            }
+
+            if (key == "left") {
+                leftLink = value;
+            }
+            else if (key == "right") {
+                rightLink = value;
+            }
+            else if (key == "up") {
+                topLink = value;
+            }
+            else if (key == "down") {
+                bottomLink = value;
+            }
+
+            skipWhitespace();
+            if (peek(',')) {
+                expect(',');
+                continue;
+            }
+            if (peek('}')) {
+                expect('}');
+                break;
+            }
+            throw std::runtime_error("invalid links object");
+        }
     }
 
     void skipValue()
@@ -407,21 +490,177 @@ getGeometryForHost(const std::map<std::string, etherwaver::layout::HostGeometry>
     return etherwaver::layout::HostGeometry(0, 0, 1920, 1080);
 }
 
+static bool
+isScreenIndexSuffix(const std::string& name, std::string& baseName)
+{
+    baseName.clear();
+    if (name.empty()) {
+        return false;
+    }
+
+    const std::string::size_type dash = name.rfind('-');
+    if (dash == std::string::npos || dash == 0 || dash + 1 >= name.size()) {
+        return false;
+    }
+
+    for (std::string::size_type i = dash + 1; i < name.size(); ++i) {
+        if (name[i] < '0' || name[i] > '9') {
+            return false;
+        }
+    }
+
+    baseName = name.substr(0, dash);
+    return !baseName.empty();
+}
+
+static std::string
+baseHostName(const std::string& name)
+{
+    std::string candidate = name;
+    std::string baseName;
+    while (isScreenIndexSuffix(candidate, baseName)) {
+        candidate = baseName;
+    }
+    return candidate;
+}
+
+template <typename T>
+static std::string
+resolveRuntimeHostId(const std::map<std::string, T>& values, const std::string& hostId)
+{
+    if (values.find(hostId) != values.end()) {
+        return hostId;
+    }
+
+    const std::string hostBase = baseHostName(hostId);
+    if (hostBase != hostId && values.find(hostBase) != values.end()) {
+        return hostBase;
+    }
+
+    std::string resolved;
+    for (typename std::map<std::string, T>::const_iterator it = values.begin();
+         it != values.end(); ++it) {
+        if (baseHostName(it->first) != hostBase) {
+            continue;
+        }
+
+        if (!resolved.empty()) {
+            return hostId;
+        }
+        resolved = it->first;
+    }
+
+    return resolved.empty() ? hostId : resolved;
+}
+
 static std::vector<ClientScreenInfo>
 getScreensForHost(const std::map<std::string, std::vector<ClientScreenInfo> >& hostScreens,
                   const std::map<std::string, etherwaver::layout::HostGeometry>& hostGeometries,
                   const std::string& hostId)
 {
+    const std::string resolvedHostId = resolveRuntimeHostId(hostScreens, hostId);
     std::map<std::string, std::vector<ClientScreenInfo> >::const_iterator it =
-        hostScreens.find(hostId);
+        hostScreens.find(resolvedHostId);
     if (it != hostScreens.end() && !it->second.empty()) {
         return it->second;
     }
 
-    const etherwaver::layout::HostGeometry geometry = getGeometryForHost(hostGeometries, hostId);
+    const etherwaver::layout::HostGeometry geometry =
+        getGeometryForHost(hostGeometries, resolveRuntimeHostId(hostGeometries, hostId));
     std::vector<ClientScreenInfo> screens;
     screens.push_back(ClientScreenInfo("screen0", 0, 0, geometry.m_width, geometry.m_height));
     return screens;
+}
+
+static std::vector<etherwaver::layout::Screen>
+getLayoutScreensForHost(const etherwaver::layout::ScreenManager& manager,
+                        const std::string& hostId)
+{
+    std::vector<etherwaver::layout::Screen> screens;
+    const std::vector<etherwaver::layout::Screen>& allScreens = manager.getScreens();
+    for (std::vector<etherwaver::layout::Screen>::const_iterator it = allScreens.begin();
+         it != allScreens.end(); ++it) {
+        if (it->m_hostId == hostId) {
+            screens.push_back(*it);
+        }
+    }
+    return screens;
+}
+
+static etherwaver::layout::ScreenManager
+normalizeJsonLayout(const etherwaver::layout::ScreenManager& manager,
+                    const std::map<std::string, etherwaver::layout::HostGeometry>& hostGeometries,
+                    const std::map<std::string, std::vector<ClientScreenInfo> >& hostScreens)
+{
+    const std::vector<etherwaver::layout::Screen>& originalScreens = manager.getScreens();
+    std::vector<etherwaver::layout::Screen> normalizedScreens;
+    std::set<std::string> processedHosts;
+
+    for (std::vector<etherwaver::layout::Screen>::const_iterator it = originalScreens.begin();
+         it != originalScreens.end(); ++it) {
+        if (!processedHosts.insert(it->m_hostId).second) {
+            continue;
+        }
+
+        const std::vector<etherwaver::layout::Screen> hostLayoutScreens =
+            getLayoutScreensForHost(manager, it->m_hostId);
+        const std::vector<ClientScreenInfo> actualHostScreens =
+            getScreensForHost(hostScreens, hostGeometries, it->m_hostId);
+
+        if (hostLayoutScreens.size() == 1 && actualHostScreens.size() > 1) {
+            const etherwaver::layout::Screen& hostLayout = hostLayoutScreens.front();
+
+            int minX = actualHostScreens.front().m_x;
+            int minY = actualHostScreens.front().m_y;
+            int maxX = actualHostScreens.front().m_x + actualHostScreens.front().m_w;
+            int maxY = actualHostScreens.front().m_y + actualHostScreens.front().m_h;
+            for (std::vector<ClientScreenInfo>::const_iterator screen = actualHostScreens.begin();
+                 screen != actualHostScreens.end(); ++screen) {
+                minX = std::min(minX, static_cast<int>(screen->m_x));
+                minY = std::min(minY, static_cast<int>(screen->m_y));
+                maxX = std::max(maxX, static_cast<int>(screen->m_x + screen->m_w));
+                maxY = std::max(maxY, static_cast<int>(screen->m_y + screen->m_h));
+            }
+
+            const int actualWidth = std::max(1, maxX - minX);
+            const int actualHeight = std::max(1, maxY - minY);
+            for (std::vector<ClientScreenInfo>::const_iterator screen = actualHostScreens.begin();
+                 screen != actualHostScreens.end(); ++screen) {
+                const int left =
+                    hostLayout.m_x +
+                    ((static_cast<int>(screen->m_x) - minX) * hostLayout.m_width) / actualWidth;
+                const int top =
+                    hostLayout.m_y +
+                    ((static_cast<int>(screen->m_y) - minY) * hostLayout.m_height) / actualHeight;
+                const int right =
+                    hostLayout.m_x +
+                    ((static_cast<int>(screen->m_x + screen->m_w) - minX) * hostLayout.m_width) /
+                        actualWidth;
+                const int bottom =
+                    hostLayout.m_y +
+                    ((static_cast<int>(screen->m_y + screen->m_h) - minY) * hostLayout.m_height) /
+                        actualHeight;
+
+                normalizedScreens.push_back(
+                    etherwaver::layout::Screen(it->m_hostId + ":" + screen->m_id,
+                                               it->m_hostId,
+                                               screen->m_id,
+                                               left,
+                                               top,
+                                               std::max(1, right - left),
+                                               std::max(1, bottom - top)));
+            }
+            continue;
+        }
+
+        normalizedScreens.insert(normalizedScreens.end(),
+                                 hostLayoutScreens.begin(),
+                                 hostLayoutScreens.end());
+    }
+
+    etherwaver::layout::ScreenManager normalized;
+    normalized.setScreens(normalizedScreens);
+    return normalized;
 }
 
 } // namespace
@@ -454,13 +693,7 @@ LayoutLoader::loadLayout(const std::string& layoutPath,
 {
     std::ifstream stream(layoutPath.c_str());
     if (stream.good()) {
-        try {
-            return loadJsonLayout(layoutPath);
-        }
-        catch (const std::exception&) {
-            // Fall back to the config-derived layout if the JSON file is
-            // temporarily incomplete or otherwise unreadable.
-        }
+        return normalizeJsonLayout(loadJsonLayout(layoutPath), hostGeometries, hostScreens);
     }
 
     return convertConfigToObjectLayout(config, hostGeometries, hostScreens, primaryHostId);

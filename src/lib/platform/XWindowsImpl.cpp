@@ -254,6 +254,26 @@ void XWindowsImpl::XRRSelectInput(Display *display, Window window, int mask)
 #endif
 }
 
+XRRMonitorInfo* XWindowsImpl::XRRGetMonitors(Display* display, Window window,
+                                             Bool get_active, int* nmonitors)
+{
+#if HAVE_X11_EXTENSIONS_XRANDR_H
+    return ::XRRGetMonitors(display, window, get_active, nmonitors);
+#else
+    (void) display; (void) window; (void) get_active; (void) nmonitors;
+    return nullptr;
+#endif
+}
+
+void XWindowsImpl::XRRFreeMonitors(XRRMonitorInfo* monitors)
+{
+#if HAVE_X11_EXTENSIONS_XRANDR_H
+    ::XRRFreeMonitors(monitors);
+#else
+    (void) monitors;
+#endif
+}
+
 Bool XWindowsImpl::XineramaQueryExtension(Display* display, int* event_base,
                                           int* error_base)
 {

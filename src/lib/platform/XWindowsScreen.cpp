@@ -510,6 +510,69 @@ XWindowsScreen::getScreens(std::vector<ClientScreenInfo>& screens) const
 		return;
 	}
 
+#if HAVE_X11_EXTENSIONS_XRANDR_H
+    if (m_xrandr) {
+        int numMonitors = 0;
+        XRRMonitorInfo* monitors =
+            m_impl->XRRGetMonitors(m_display, m_root, True, &numMonitors);
+        if (monitors != NULL) {
+            for (int i = 0; i < numMonitors; ++i) {
+                if (monitors[i].width <= 0 || monitors[i].height <= 0) {
+                    continue;
+                }
+
+                std::ostringstream id;
+                id << "xrandr-monitor-" << i;
+                screens.push_back(ClientScreenInfo(id.str(),
+                    monitors[i].x,
+                    monitors[i].y,
+                    monitors[i].width,
+                    monitors[i].height));
+            }
+            m_impl->XRRFreeMonitors(monitors);
+        }
+    }
+#endif
+
+    if (!screens.empty()) {
+        return;
+    }
+
+#if HAVE_X11_EXTENSIONS_XRANDR_H
+    if (m_xrandr) {
+        XRRScreenResources* resources =
+            XRRGetScreenResourcesCurrent(m_display, m_root);
+        if (resources != NULL) {
+            for (int i = 0; i < resources->ncrtc; ++i) {
+                XRRCrtcInfo* crtc = XRRGetCrtcInfo(m_display, resources, resources->crtcs[i]);
+                if (crtc == NULL) {
+                    continue;
+                }
+
+                if (crtc->mode != None &&
+                    crtc->noutput > 0 &&
+                    crtc->width > 0 &&
+                    crtc->height > 0) {
+                    std::ostringstream id;
+                    id << "xrandr-" << i;
+                    screens.push_back(ClientScreenInfo(id.str(),
+                        crtc->x,
+                        crtc->y,
+                        crtc->width,
+                        crtc->height));
+                }
+
+                XRRFreeCrtcInfo(crtc);
+            }
+            XRRFreeScreenResources(resources);
+        }
+    }
+#endif
+
+	if (!screens.empty()) {
+		return;
+	}
+
 	screens.push_back(ClientScreenInfo("screen0", m_x, m_y, m_w, m_h));
 }
 

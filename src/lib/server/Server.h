@@ -171,6 +171,15 @@ public:
     */
     void getClients(std::vector<std::string>& list) const;
 
+    //! Switch the active screen to the one identified by \p screenId.
+    /*!
+    Resolves the screen in the object layout (etherwaver-layout.json) or the
+    legacy Config, finds the owning BaseClientProxy, and performs a full
+    leave/enter transition including cursor warp and clipboard sync.
+    Returns true iff the switch was executed.
+    */
+    bool                switchToScreenName(const std::string& screenId);
+
     //! Return true if received file size is valid
     bool                isReceivedFileSizeValid();
 
@@ -303,7 +312,6 @@ private:
     const etherwaver::layout::Screen*
                         getLayoutScreenForHost(const std::string& hostId) const;
     BaseClientProxy*    getClientForLayoutScreen(const etherwaver::layout::Screen& screen) const;
-    bool                switchToScreenName(const std::string& screenName);
     bool                trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion);
 
     // event handlers

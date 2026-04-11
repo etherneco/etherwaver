@@ -96,6 +96,154 @@ toClientCoordinate(int globalValue, int screenOrigin, int screenSpan,
     return clientOrigin + (offset * clientSpan) / screenSpan;
 }
 
+static int
+mapInclusiveCoordinate(int value, int srcMin, int srcMax, int dstMin, int dstMax)
+{
+    if (srcMax <= srcMin) {
+        return dstMin;
+    }
+    if (dstMax <= dstMin) {
+        return dstMin;
+    }
+
+    const int srcOffset = value - srcMin;
+    const int srcSpan = srcMax - srcMin;
+    const int dstSpan = dstMax - dstMin;
+    return dstMin + (srcOffset * dstSpan) / srcSpan;
+}
+
+static bool
+getHostLayoutBounds(const etherwaver::layout::ScreenManager& layout,
+                    const std::string& hostId,
+                    int& minX, int& minY, int& maxX, int& maxY)
+{
+    const std::vector<etherwaver::layout::Screen>& screens = layout.getScreens();
+    bool found = false;
+    for (std::vector<etherwaver::layout::Screen>::const_iterator it = screens.begin();
+         it != screens.end(); ++it) {
+        if (it->m_hostId != hostId) {
+            continue;
+        }
+
+        const int right = it->m_x + it->m_width;
+        const int bottom = it->m_y + it->m_height;
+        if (!found) {
+            minX = it->m_x;
+            minY = it->m_y;
+            maxX = right;
+            maxY = bottom;
+            found = true;
+            continue;
+        }
+
+        minX = std::min(minX, it->m_x);
+        minY = std::min(minY, it->m_y);
+        maxX = std::max(maxX, right);
+        maxY = std::max(maxY, bottom);
+    }
+
+    return found;
+}
+
+static const etherwaver::layout::Screen*
+findLayoutScreenForPosition(const etherwaver::layout::ScreenManager& layout,
+                            const std::string& hostId,
+                            SInt32 screenX, SInt32 screenY, SInt32 screenW, SInt32 screenH,
+                            SInt32 cursorX, SInt32 cursorY)
+{
+    if (screenW <= 0 || screenH <= 0) {
+        return NULL;
+    }
+
+    int hostMinX = 0;
+    int hostMinY = 0;
+    int hostMaxX = 0;
+    int hostMaxY = 0;
+    if (!getHostLayoutBounds(layout, hostId, hostMinX, hostMinY, hostMaxX, hostMaxY)) {
+        return NULL;
+    }
+
+    const int hostWidth = std::max(1, hostMaxX - hostMinX);
+    const int hostHeight = std::max(1, hostMaxY - hostMinY);
+    const int globalX = hostMinX + ((cursorX - screenX) * hostWidth) / screenW;
+    const int globalY = hostMinY + ((cursorY - screenY) * hostHeight) / screenH;
+    const etherwaver::layout::Screen* screen = layout.findScreenAt(globalX, globalY);
+    if (screen != NULL && screen->m_hostId == hostId) {
+        return screen;
+    }
+
+    return NULL;
+}
+
+static bool
+getClientScreenForCursor(const BaseClientProxy* client,
+                         SInt32 cursorX, SInt32 cursorY,
+                         SInt32& screenX, SInt32& screenY,
+                         SInt32& screenW, SInt32& screenH)
+{
+    if (client == NULL) {
+        return false;
+    }
+
+    std::vector<ClientScreenInfo> screens;
+    client->getScreens(screens);
+    if (screens.empty()) {
+        client->getShape(screenX, screenY, screenW, screenH);
+        return screenW > 0 && screenH > 0;
+    }
+
+    const ClientScreenInfo* bestScreen = NULL;
+    for (std::vector<ClientScreenInfo>::const_iterator it = screens.begin();
+         it != screens.end(); ++it) {
+        if (it->m_w <= 0 || it->m_h <= 0) {
+            continue;
+        }
+
+        if (cursorX >= it->m_x && cursorX < it->m_x + it->m_w &&
+            cursorY >= it->m_y && cursorY < it->m_y + it->m_h) {
+            bestScreen = &(*it);
+            break;
+        }
+    }
+
+    if (bestScreen == NULL) {
+        // Fall back to the nearest physical screen so switching still works
+        // when the cursor is just outside monitor bounds.
+        SInt32 bestDistance = 0;
+        bool haveDistance = false;
+        for (std::vector<ClientScreenInfo>::const_iterator it = screens.begin();
+             it != screens.end(); ++it) {
+            if (it->m_w <= 0 || it->m_h <= 0) {
+                continue;
+            }
+
+            const SInt32 dx =
+                (cursorX < it->m_x) ? (it->m_x - cursorX) :
+                (cursorX >= it->m_x + it->m_w) ? (cursorX - (it->m_x + it->m_w - 1)) : 0;
+            const SInt32 dy =
+                (cursorY < it->m_y) ? (it->m_y - cursorY) :
+                (cursorY >= it->m_y + it->m_h) ? (cursorY - (it->m_y + it->m_h - 1)) : 0;
+            const SInt32 distance = dx + dy;
+            if (!haveDistance || distance < bestDistance) {
+                bestDistance = distance;
+                bestScreen = &(*it);
+                haveDistance = true;
+            }
+        }
+    }
+
+    if (bestScreen == NULL) {
+        client->getShape(screenX, screenY, screenW, screenH);
+        return screenW > 0 && screenH > 0;
+    }
+
+    screenX = bestScreen->m_x;
+    screenY = bestScreen->m_y;
+    screenW = bestScreen->m_w;
+    screenH = bestScreen->m_h;
+    return true;
+}
+
 static bool
 isScreenIndexSuffix(const std::string& name, std::string& baseName)
 {
@@ -112,6 +260,72 @@ isScreenIndexSuffix(const std::string& name, std::string& baseName)
 
     baseName = name.substr(0, dash);
     return !baseName.empty();
+}
+
+static std::string
+baseHostName(const std::string& name)
+{
+    std::string candidate = name;
+    std::string baseName;
+    while (isScreenIndexSuffix(candidate, baseName)) {
+        candidate = baseName;
+    }
+    return candidate;
+}
+
+static std::string
+resolveLayoutHostId(const etherwaver::layout::ScreenManager& layout, const std::string& hostId)
+{
+    if (layout.getFirstScreenForHost(hostId) != NULL) {
+        return hostId;
+    }
+
+    const std::string baseName = baseHostName(hostId);
+    if (baseName != hostId && layout.getFirstScreenForHost(baseName) != NULL) {
+        return baseName;
+    }
+
+    return hostId;
+}
+
+static std::string
+resolveClientHostId(const std::map<std::string, BaseClientProxy*>& clients,
+                    const std::string& primaryHostId,
+                    const std::string& hostId)
+{
+    if (hostId.empty()) {
+        return std::string();
+    }
+
+    if (hostId == primaryHostId || baseHostName(primaryHostId) == baseHostName(hostId)) {
+        return primaryHostId;
+    }
+
+    if (clients.find(hostId) != clients.end()) {
+        return hostId;
+    }
+
+    const std::string targetBaseHostId = baseHostName(hostId);
+    std::string resolvedHostId;
+    for (std::map<std::string, BaseClientProxy*>::const_iterator it = clients.begin();
+         it != clients.end(); ++it) {
+        if (baseHostName(it->first) != targetBaseHostId) {
+            continue;
+        }
+
+        if (!resolvedHostId.empty()) {
+            return hostId;
+        }
+        resolvedHostId = it->first;
+    }
+
+    return resolvedHostId.empty() ? hostId : resolvedHostId;
+}
+
+static const char*
+safeDirectionName(EDirection dir)
+{
+    return (dir == kNoDirection) ? "none" : Config::dirName(dir);
 }
 
 static std::string
@@ -453,11 +667,11 @@ Server::adoptClient(BaseClientProxy* client)
 	// add client to client list
 	if (!addClient(client)) {
 		// can only have one screen with a given name at any given time
-		LOG((CLOG_WARN "a client with name \"%s\" is already connected", getName(client).c_str()));
+		LOG((CLOG_WARN "a client with name \"%s\" is already connected", clientName.c_str()));
 		closeClient(client, kMsgEBusy);
 		return;
 	}
-	LOG((CLOG_NOTE "client \"%s\" has connected", getName(client).c_str()));
+	LOG((CLOG_NOTE "client \"%s\" has connected", clientName.c_str()));
 	reloadScreenLayout();
 
 	// send configuration options to client
@@ -470,7 +684,7 @@ Server::adoptClient(BaseClientProxy* client)
 
 	// send notification
 	Server::ScreenConnectedInfo* info =
-		new Server::ScreenConnectedInfo(getName(client));
+		new Server::ScreenConnectedInfo(clientName);
 	m_events->addEvent(Event(m_events->forServer().connected(),
 								m_primaryClient->getEventTarget(), info));
 }
@@ -506,25 +720,23 @@ Server::getClients(std::vector<std::string>& list) const
 
 std::string Server::getName(const BaseClientProxy* client) const
 {
+    for (ClientList::const_iterator it = m_clients.begin(); it != m_clients.end(); ++it) {
+        if (it->second == client) {
+            return it->first;
+        }
+    }
+
     const std::string rawName = client->getName();
-    std::string name = m_config->getCanonicalName(rawName);
+    std::string name = resolveScreenOrHostName(*m_config, rawName);
     if (!name.empty()) {
         return name;
     }
 
-    if (m_config->isScreen(rawName)) {
-        return rawName;
-    }
-
     std::string baseName;
     if (isScreenIndexSuffix(rawName, baseName)) {
-        name = m_config->getCanonicalName(baseName);
+        name = resolveScreenOrHostName(*m_config, baseName);
         if (!name.empty()) {
             return name;
-        }
-
-        if (m_config->isScreen(baseName)) {
-            return baseName;
         }
 
         if (usingObjectLayout() &&
@@ -569,13 +781,25 @@ Server::getActiveLayoutScreen() const
         return NULL;
     }
 
+    SInt32 ax = 0;
+    SInt32 ay = 0;
+    SInt32 aw = 0;
+    SInt32 ah = 0;
+    getClientScreenForCursor(m_active, m_x, m_y, ax, ay, aw, ah);
+    const std::string activeHostId = resolveLayoutHostId(m_screenLayout, getName(m_active));
+    const etherwaver::layout::Screen* positionScreen =
+        findLayoutScreenForPosition(m_screenLayout, activeHostId, ax, ay, aw, ah, m_x, m_y);
+    if (positionScreen != NULL) {
+        return positionScreen;
+    }
+
     const etherwaver::layout::Screen* screen =
         m_screenLayout.getScreen(m_activeLayoutScreenId);
     if (screen != NULL) {
         return screen;
     }
 
-    return m_screenLayout.getFirstScreenForHost(getName(m_active));
+    return getLayoutScreenForHost(getName(m_active));
 }
 
 const etherwaver::layout::Screen*
@@ -585,11 +809,12 @@ Server::getLayoutScreenForHost(const std::string& hostId) const
         return NULL;
     }
 
-    const std::string primaryScreenId = hostId + ":screen0";
+    const std::string resolvedHostId = resolveLayoutHostId(m_screenLayout, hostId);
+    const std::string primaryScreenId = resolvedHostId + ":screen0";
     const std::vector<etherwaver::layout::Screen>& screens = m_screenLayout.getScreens();
     for (std::vector<etherwaver::layout::Screen>::const_iterator it = screens.begin();
          it != screens.end(); ++it) {
-        if (it->m_hostId != hostId) {
+        if (it->m_hostId != resolvedHostId) {
             continue;
         }
         if (it->m_id == primaryScreenId || it->m_name == "screen0" ||
@@ -598,13 +823,20 @@ Server::getLayoutScreenForHost(const std::string& hostId) const
         }
     }
 
-    return m_screenLayout.getFirstScreenForHost(hostId);
+    return m_screenLayout.getFirstScreenForHost(resolvedHostId);
 }
 
 BaseClientProxy*
 Server::getClientForLayoutScreen(const etherwaver::layout::Screen& screen) const
 {
-    ClientList::const_iterator it = m_clients.find(screen.m_hostId);
+    const std::string layoutHostId = resolveLayoutHostId(m_screenLayout, screen.m_hostId);
+    const std::string runtimeHostId =
+        resolveClientHostId(m_clients, getName(m_primaryClient), layoutHostId);
+    if (runtimeHostId == getName(m_primaryClient)) {
+        return m_primaryClient;
+    }
+
+    ClientList::const_iterator it = m_clients.find(runtimeHostId);
     if (it == m_clients.end()) {
         return NULL;
     }
@@ -630,7 +862,9 @@ Server::switchToScreenName(const std::string& screenName)
                 return true;
             }
 
-            ClientList::const_iterator host = m_clients.find(screen->m_hostId);
+            const std::string runtimeHostId =
+                resolveClientHostId(m_clients, getName(m_primaryClient), screen->m_hostId);
+            ClientList::const_iterator host = m_clients.find(runtimeHostId);
             if (host != m_clients.end()) {
                 jumpToScreen(host->second);
                 return true;
@@ -650,9 +884,31 @@ Server::switchToScreenName(const std::string& screenName)
 void
 Server::reloadScreenLayout()
 {
+    const etherwaver::layout::ScreenManager previousLayout = m_screenLayout;
     const std::string previousActiveScreenId = m_activeLayoutScreenId;
     std::map<std::string, etherwaver::layout::HostGeometry> hostGeometries;
     std::map<std::string, std::vector<ClientScreenInfo> > hostScreens;
+    const std::string primaryHostId = getName(m_primaryClient);
+    const std::string primaryBaseHostId = baseHostName(primaryHostId);
+    const std::string layoutPath = getLayoutPath();
+
+    {
+        SInt32 x = 0;
+        SInt32 y = 0;
+        SInt32 width = 0;
+        SInt32 height = 0;
+        std::vector<ClientScreenInfo> screens;
+        m_primaryClient->getShape(x, y, width, height);
+        hostGeometries[primaryHostId] = etherwaver::layout::HostGeometry(x, y, width, height);
+        m_primaryClient->getScreens(screens);
+        hostScreens[primaryHostId] = screens;
+
+        if (primaryBaseHostId != primaryHostId) {
+            hostGeometries[primaryBaseHostId] =
+                etherwaver::layout::HostGeometry(x, y, width, height);
+            hostScreens[primaryBaseHostId] = screens;
+        }
+    }
 
     for (ClientList::const_iterator it = m_clients.begin(); it != m_clients.end(); ++it) {
         SInt32 x = 0;
@@ -664,13 +920,50 @@ Server::reloadScreenLayout()
         it->second->getScreens(hostScreens[it->first]);
     }
 
-    try {
-        m_screenLayout = etherwaver::layout::LayoutLoader::loadLayout(
-            getLayoutPath(), *m_config, hostGeometries, hostScreens, m_primaryClient->getName());
+    const bool hasLayoutFile = std::ifstream(layoutPath.c_str()).good();
+    if (!hasLayoutFile && !previousLayout.empty()) {
+        LOG((CLOG_WARN
+            "object-layout reload skipped missingLayoutFile=%s keepingPreviousLayout=yes",
+            layoutPath.c_str()));
+        m_screenLayout = previousLayout;
     }
-    catch (const std::exception& e) {
-        LOG((CLOG_WARN "failed to load object layout: %s", e.what()));
-        m_screenLayout.setScreens(std::vector<etherwaver::layout::Screen>());
+    else {
+        try {
+            m_screenLayout = etherwaver::layout::LayoutLoader::loadLayout(
+                layoutPath, *m_config, hostGeometries, hostScreens, primaryHostId);
+        }
+        catch (const std::exception& e) {
+            if (!previousLayout.empty()) {
+                LOG((CLOG_WARN
+                    "failed to load object layout: %s; keeping previous layout",
+                    e.what()));
+                m_screenLayout = previousLayout;
+            }
+            else {
+                LOG((CLOG_WARN "failed to load object layout: %s", e.what()));
+                m_screenLayout.setScreens(std::vector<etherwaver::layout::Screen>());
+            }
+        }
+    }
+
+    {
+        const std::vector<etherwaver::layout::Screen>& screens = m_screenLayout.getScreens();
+        for (std::vector<etherwaver::layout::Screen>::const_iterator it = screens.begin();
+             it != screens.end(); ++it) {
+            LOG((CLOG_INFO
+                "object-layout loaded screen id=%s host=%s name=%s rect=%d,%d %dx%d links(L=%s R=%s U=%s D=%s)",
+                it->m_id.c_str(),
+                it->m_hostId.c_str(),
+                it->m_name.c_str(),
+                it->m_x,
+                it->m_y,
+                it->m_width,
+                it->m_height,
+                it->m_leftLink.empty() ? "<none>" : it->m_leftLink.c_str(),
+                it->m_rightLink.empty() ? "<none>" : it->m_rightLink.c_str(),
+                it->m_topLink.empty() ? "<none>" : it->m_topLink.c_str(),
+                it->m_bottomLink.empty() ? "<none>" : it->m_bottomLink.c_str()));
+        }
     }
 
     const etherwaver::layout::Screen* activeScreen =
@@ -691,37 +984,90 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
 {
     const etherwaver::layout::Screen* sourceScreen = getActiveLayoutScreen();
     if (sourceScreen == NULL) {
+        LOG((CLOG_INFO
+            "object-layout switch aborted activeHost=%s reason=no-source-screen x=%d y=%d absolute=%s",
+            getName(m_active).c_str(), x, y, absoluteMotion ? "yes" : "no"));
         return false;
     }
 
     SInt32 ax, ay, aw, ah;
-    m_active->getShape(ax, ay, aw, ah);
+    getClientScreenForCursor(m_active, x, y, ax, ay, aw, ah);
 
-    const int globalX = toGlobalCoordinate(x, ax, aw, sourceScreen->m_x, sourceScreen->m_width);
-    const int globalY = toGlobalCoordinate(y, ay, ah, sourceScreen->m_y, sourceScreen->m_height);
+    const std::string sourceHostId = resolveLayoutHostId(m_screenLayout, sourceScreen->m_hostId);
+    int hostMinX = sourceScreen->m_x;
+    int hostMinY = sourceScreen->m_y;
+    int hostMaxX = sourceScreen->m_x + sourceScreen->m_width;
+    int hostMaxY = sourceScreen->m_y + sourceScreen->m_height;
+    if (!getHostLayoutBounds(m_screenLayout, sourceHostId, hostMinX, hostMinY, hostMaxX, hostMaxY)) {
+        hostMinX = sourceScreen->m_x;
+        hostMinY = sourceScreen->m_y;
+        hostMaxX = sourceScreen->m_x + sourceScreen->m_width;
+        hostMaxY = sourceScreen->m_y + sourceScreen->m_height;
+    }
+    const int hostWidth = hostMaxX - hostMinX;
+    const int hostHeight = hostMaxY - hostMinY;
+
+    EDirection direction = kNoDirection;
+    int globalX = toGlobalCoordinate(x, ax, aw, hostMinX, hostWidth);
+    int globalY = toGlobalCoordinate(y, ay, ah, hostMinY, hostHeight);
+    if (x < ax || globalX < sourceScreen->m_x) {
+        direction = kLeft;
+    }
+    else if (x >= ax + aw || globalX >= sourceScreen->m_x + sourceScreen->m_width) {
+        direction = kRight;
+    }
+    else if (y < ay || globalY < sourceScreen->m_y) {
+        direction = kTop;
+    }
+    else if (y >= ay + ah || globalY >= sourceScreen->m_y + sourceScreen->m_height) {
+        direction = kBottom;
+    }
+
+    // When the cursor has already crossed a local edge, force the global
+    // coordinate just outside the source screen so directional links resolve.
+    if (direction == kLeft && globalX >= sourceScreen->m_x) {
+        globalX = sourceScreen->m_x - 1;
+    }
+    else if (direction == kRight &&
+             globalX < sourceScreen->m_x + sourceScreen->m_width) {
+        globalX = sourceScreen->m_x + sourceScreen->m_width;
+    }
+    else if (direction == kTop && globalY >= sourceScreen->m_y) {
+        globalY = sourceScreen->m_y - 1;
+    }
+    else if (direction == kBottom &&
+             globalY < sourceScreen->m_y + sourceScreen->m_height) {
+        globalY = sourceScreen->m_y + sourceScreen->m_height;
+    }
+
     const etherwaver::layout::Screen* destinationScreen = m_screenLayout.findScreenAt(globalX, globalY);
-    if (destinationScreen == NULL || destinationScreen->m_id == sourceScreen->m_id) {
+    const etherwaver::layout::Screen* resolvedDestination = destinationScreen;
+    const etherwaver::layout::Screen* directionalDestination = NULL;
+    if ((resolvedDestination == NULL || resolvedDestination->m_id == sourceScreen->m_id) &&
+        direction != kNoDirection) {
+        directionalDestination = m_screenLayout.findScreenInDirection(sourceScreen->m_id, direction);
+        resolvedDestination = directionalDestination;
+    }
+
+    if (resolvedDestination == NULL || resolvedDestination->m_id == sourceScreen->m_id) {
+        LOG((CLOG_INFO
+            "object-layout switch rejected sourceScreen=%s direction=%s directDestination=%s directionalDestination=%s resolvedDestination=%s reason=no-valid-destination",
+            sourceScreen->m_id.c_str(),
+            safeDirectionName(direction),
+            (destinationScreen != NULL ? destinationScreen->m_id.c_str() : "<none>"),
+            (directionalDestination != NULL ? directionalDestination->m_id.c_str() : "<none>"),
+            (resolvedDestination != NULL ? resolvedDestination->m_id.c_str() : "<none>")));
         noSwitch(clampInt(x, ax, ax + aw - 1), clampInt(y, ay, ay + ah - 1));
         return false;
     }
 
-    BaseClientProxy* destinationClient = getClientForLayoutScreen(*destinationScreen);
+    BaseClientProxy* destinationClient = getClientForLayoutScreen(*resolvedDestination);
     if (destinationClient == NULL) {
+        LOG((CLOG_INFO
+            "object-layout switch rejected sourceScreen=%s resolvedDestination=%s reason=no-destination-client",
+            sourceScreen->m_id.c_str(),
+            resolvedDestination->m_id.c_str()));
         return false;
-    }
-
-    EDirection direction = kNoDirection;
-    if (globalX < sourceScreen->m_x) {
-        direction = kLeft;
-    }
-    else if (globalX >= sourceScreen->m_x + sourceScreen->m_width) {
-        direction = kRight;
-    }
-    else if (globalY < sourceScreen->m_y) {
-        direction = kTop;
-    }
-    else if (globalY >= sourceScreen->m_y + sourceScreen->m_height) {
-        direction = kBottom;
     }
 
     const SInt32 xActive = clampInt(x, ax, ax + aw - 1);
@@ -731,18 +1077,31 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
     SInt32 dy = 0;
     destinationClient->getShape(dx, dy, aw, ah);
 
-    SInt32 targetX = toClientCoordinate(globalX, destinationScreen->m_x, destinationScreen->m_width,
+    SInt32 targetX = toClientCoordinate(globalX, resolvedDestination->m_x, resolvedDestination->m_width,
                                         dx, aw);
-    SInt32 targetY = toClientCoordinate(globalY, destinationScreen->m_y, destinationScreen->m_height,
+    SInt32 targetY = toClientCoordinate(globalY, resolvedDestination->m_y, resolvedDestination->m_height,
                                         dy, ah);
     targetX = clampInt(targetX, dx, dx + aw - 1);
     targetY = clampInt(targetY, dy, dy + ah - 1);
 
     if (!isSwitchOkay(destinationClient, direction, targetX, targetY, xActive, yActive)) {
+        LOG((CLOG_INFO
+            "object-layout switch blocked sourceScreen=%s destination=%s client=%s target=%d,%d",
+            sourceScreen->m_id.c_str(),
+            resolvedDestination->m_id.c_str(),
+            getName(destinationClient).c_str(),
+            targetX, targetY));
         return false;
     }
 
-    switchScreen(destinationClient, targetX, targetY, false, destinationScreen->m_id);
+    LOG((CLOG_INFO
+        "object-layout switch accepted sourceScreen=%s destination=%s client=%s target=%d,%d",
+        sourceScreen->m_id.c_str(),
+        resolvedDestination->m_id.c_str(),
+        getName(destinationClient).c_str(),
+        targetX, targetY));
+
+    switchScreen(destinationClient, targetX, targetY, false, resolvedDestination->m_id);
     if (!absoluteMotion) {
         m_x = targetX;
         m_y = targetY;
@@ -1841,6 +2200,13 @@ Server::handleSwitchWaitTimeout(const Event&, void*)
 		return;
 	}
 
+	LOG((CLOG_INFO
+		"switch-wait timeout activeHost=%s targetHost=%s target=%d,%d objectLayout=%s",
+		getName(m_active).c_str(),
+		(m_switchScreen != NULL ? getName(m_switchScreen).c_str() : "<none>"),
+		m_switchWaitX, m_switchWaitY,
+		usingObjectLayout() ? "yes" : "no"));
+
 	// switch screen
 	switchScreen(m_switchScreen, m_switchWaitX, m_switchWaitY, false);
 }
@@ -2260,7 +2626,96 @@ Server::onMouseMovePrimary(SInt32 x, SInt32 y)
 	m_y       = y;
 
 	if (usingObjectLayout()) {
-		return trySwitchUsingObjectLayout(x, y, true);
+		SInt32 ax, ay, aw, ah;
+		m_active->getShape(ax, ay, aw, ah);
+		SInt32 zoneSize = std::max<SInt32>(2, getJumpZoneSize(m_active));
+		const etherwaver::layout::Screen* sourceScreen = getActiveLayoutScreen();
+		if (sourceScreen == NULL) {
+			noSwitch(x, y);
+			return false;
+		}
+
+		const std::string sourceHostId = resolveLayoutHostId(m_screenLayout, sourceScreen->m_hostId);
+		int hostMinX = sourceScreen->m_x;
+		int hostMinY = sourceScreen->m_y;
+		int hostMaxX = sourceScreen->m_x + sourceScreen->m_width;
+		int hostMaxY = sourceScreen->m_y + sourceScreen->m_height;
+		if (!getHostLayoutBounds(m_screenLayout, sourceHostId, hostMinX, hostMinY, hostMaxX, hostMaxY)) {
+			hostMinX = sourceScreen->m_x;
+			hostMinY = sourceScreen->m_y;
+			hostMaxX = sourceScreen->m_x + sourceScreen->m_width;
+			hostMaxY = sourceScreen->m_y + sourceScreen->m_height;
+		}
+
+		const int hostWidth = std::max(1, hostMaxX - hostMinX);
+		const int hostHeight = std::max(1, hostMaxY - hostMinY);
+		const int hostRight = hostMinX + hostWidth - 1;
+		const int hostBottom = hostMinY + hostHeight - 1;
+		const int localRight = ax + aw - 1;
+		const int localBottom = ay + ah - 1;
+		const SInt32 screenLeft =
+			mapInclusiveCoordinate(sourceScreen->m_x, hostMinX, hostRight, ax, localRight);
+		const SInt32 screenRight =
+			mapInclusiveCoordinate(sourceScreen->m_x + sourceScreen->m_width - 1,
+								   hostMinX, hostRight, ax, localRight);
+		const SInt32 screenTop =
+			mapInclusiveCoordinate(sourceScreen->m_y, hostMinY, hostBottom, ay, localBottom);
+		const SInt32 screenBottom =
+			mapInclusiveCoordinate(sourceScreen->m_y + sourceScreen->m_height - 1,
+								   hostMinY, hostBottom, ay, localBottom);
+
+		EDirection dirh = kNoDirection, dirv = kNoDirection;
+		SInt32 xh = x, yv = y;
+		if (x < screenLeft + zoneSize) {
+			xh  -= zoneSize;
+			dirh = kLeft;
+		}
+		else if (x >= screenRight - zoneSize + 1) {
+			xh  += zoneSize;
+			dirh = kRight;
+		}
+		if (y < screenTop + zoneSize) {
+			yv  -= zoneSize;
+			dirv = kTop;
+		}
+		else if (y >= screenBottom - zoneSize + 1) {
+			yv  += zoneSize;
+			dirv = kBottom;
+		}
+
+		if (dirh == kNoDirection && dirv == kNoDirection) {
+			LOG((CLOG_INFO
+				"object-layout primary no-edge activeHost=%s pos=%d,%d hostScreen=%s localScreen=%d,%d..%d,%d desktop=%d,%d %dx%d zone=%d",
+				getName(m_active).c_str(), x, y, sourceScreen->m_id.c_str(),
+				screenLeft, screenTop, screenRight, screenBottom,
+				ax, ay, aw, ah, zoneSize));
+			noSwitch(x, y);
+			return false;
+		}
+
+		LOG((CLOG_INFO
+			"object-layout primary edge activeHost=%s pos=%d,%d zone=%d dirh=%s dirv=%s xh=%d yv=%d",
+			getName(m_active).c_str(), x, y, zoneSize,
+			safeDirectionName(dirh), safeDirectionName(dirv), xh, yv));
+
+		EDirection dirs[] = {dirh, dirv};
+		SInt32 xs[] = {xh, x}, ys[] = {y, yv};
+		for (int i = 0; i < 2; ++i) {
+			if (dirs[i] == kNoDirection) {
+				continue;
+			}
+			LOG((CLOG_INFO
+				"object-layout primary attempt activeHost=%s direction=%s x=%d y=%d",
+				getName(m_active).c_str(), safeDirectionName(dirs[i]), xs[i], ys[i]));
+			if (trySwitchUsingObjectLayout(xs[i], ys[i], true)) {
+				return true;
+			}
+		}
+
+		LOG((CLOG_INFO
+			"object-layout primary attempts-failed activeHost=%s pos=%d,%d",
+			getName(m_active).c_str(), x, y));
+		return false;
 	}
 
 	// get screen shape

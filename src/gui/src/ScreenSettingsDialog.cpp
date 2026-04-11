@@ -22,8 +22,65 @@
 #include <QtCore>
 #include <QtGui>
 #include <QMessageBox>
+#include <QSignalBlocker>
+#include <QDebug>
 
 static const QRegExp ValidScreenName("[a-z0-9\\._-]{,255}", Qt::CaseInsensitive);
+
+namespace {
+
+bool splitTrailingScreenNumber(const QString& fullName, QString& baseName, int& number)
+{
+    QString candidate = fullName.trimmed();
+    int parsedNumber = 0;
+    bool foundSuffix = false;
+
+    while (!candidate.isEmpty()) {
+        const int dashPos = candidate.lastIndexOf('-');
+        if (dashPos <= 0 || dashPos + 1 >= candidate.length()) {
+            break;
+        }
+
+        bool ok = false;
+        const int suffixNumber = candidate.mid(dashPos + 1).toInt(&ok);
+        if (!ok || suffixNumber <= 0) {
+            break;
+        }
+
+        candidate = candidate.left(dashPos);
+        parsedNumber = suffixNumber;
+        foundSuffix = true;
+    }
+
+    if (foundSuffix && !candidate.isEmpty()) {
+        baseName = candidate;
+        number = parsedNumber;
+        return true;
+    }
+
+    return false;
+}
+
+void normalizeScreenIdentity(const QString& rawName, int rawNumber, QString& baseName, int& number)
+{
+    QString parsedBaseName;
+    int parsedNumber = rawNumber;
+
+    if (splitTrailingScreenNumber(rawName, parsedBaseName, parsedNumber)) {
+        baseName = parsedBaseName;
+
+        // If the UI spinbox is still on its default value, prefer the number
+        // encoded in the name so editing an existing "host-N" screen does not
+        // accidentally become "host-N-1".
+        number = (rawNumber <= 1) ? parsedNumber : rawNumber;
+        return;
+    }
+
+    baseName = rawName;
+    number = (rawNumber > 0) ? rawNumber : 1;
+}
+
+} // namespace
 
 static QString check_name_param(QString name)
 {
@@ -43,14 +100,11 @@ ScreenSettingsDialog::ScreenSettingsDialog(QWidget* parent, Screen* pScreen) :
 {
     setupUi(this);
 
-    QString baseName;
-    int number = 1;
-    splitScreenName(m_pScreen->name(), baseName, number);
+    qDebug() << "ScreenSettingsDialog ctor raw screen name:" << m_pScreen->name();
 
-    m_pLineEditName->setText(check_name_param(baseName));
     m_pLineEditName->setValidator(new QRegExpValidator(ValidScreenName, m_pLineEditName));
+    normalizeNameWidgets(m_pScreen->name(), 1);
     m_pLineEditName->selectAll();
-    m_pSpinBoxNumber->setValue(number);
 
     m_pLineEditAlias->setValidator(new QRegExpValidator(ValidScreenName, m_pLineEditName));
 
@@ -86,6 +140,8 @@ void ScreenSettingsDialog::accept()
                "Please either fill in a name or cancel the dialog."));
         return;
     }
+
+    normalizeNameWidgets(m_pLineEditName->text(), m_pSpinBoxNumber->value());
 
     m_pScreen->init();
 
@@ -146,6 +202,11 @@ void ScreenSettingsDialog::on_m_pLineEditAlias_textChanged(const QString& text)
     m_pButtonAddAlias->setEnabled(!text.isEmpty());
 }
 
+void ScreenSettingsDialog::on_m_pLineEditName_textChanged(const QString& text)
+{
+    normalizeNameWidgets(text, m_pSpinBoxNumber->value());
+}
+
 void ScreenSettingsDialog::on_m_pButtonRemoveAlias_clicked()
 {
     QList<QListWidgetItem*> items = m_pListAliases->selectedItems();
@@ -161,22 +222,46 @@ void ScreenSettingsDialog::on_m_pListAliases_itemSelectionChanged()
 
 QString ScreenSettingsDialog::composedScreenName() const
 {
+    QString normalizedBaseName;
+    int normalizedNumber = m_pSpinBoxNumber->value();
+    normalizeScreenIdentity(m_pLineEditName->text(), normalizedNumber, normalizedBaseName, normalizedNumber);
+
     return QString("%1-%2")
-        .arg(check_name_param(m_pLineEditName->text()))
-        .arg(m_pSpinBoxNumber->value());
+        .arg(check_name_param(normalizedBaseName))
+        .arg(normalizedNumber);
 }
 
 void ScreenSettingsDialog::splitScreenName(const QString& fullName, QString& baseName, int& number) const
 {
-    QRegExp pattern("^(.*?)-(\\d+)$");
-    if (pattern.exactMatch(fullName)) {
-        baseName = pattern.cap(1);
-        number = pattern.cap(2).toInt();
-        if (!baseName.isEmpty() && number > 0) {
-            return;
-        }
+    normalizeScreenIdentity(fullName, number, baseName, number);
+}
+
+void ScreenSettingsDialog::normalizeNameWidgets(const QString& rawName, int rawNumber)
+{
+    QString normalizedBaseName;
+    int normalizedNumber = rawNumber;
+    normalizeScreenIdentity(rawName, normalizedNumber, normalizedBaseName, normalizedNumber);
+
+    qDebug() << "normalizeNameWidgets rawName=" << rawName
+             << "rawNumber=" << rawNumber
+             << "normalizedBaseName=" << normalizedBaseName
+             << "normalizedNumber=" << normalizedNumber;
+
+    const QString sanitizedBaseName = check_name_param(normalizedBaseName);
+    const bool needsNameUpdate = (m_pLineEditName->text() != sanitizedBaseName);
+    const bool needsNumberUpdate = (m_pSpinBoxNumber->value() != normalizedNumber);
+
+    if (!needsNameUpdate && !needsNumberUpdate) {
+        return;
     }
 
-    baseName = fullName;
-    number = 1;
+    const QSignalBlocker nameBlocker(m_pLineEditName);
+    const QSignalBlocker numberBlocker(m_pSpinBoxNumber);
+
+    if (needsNameUpdate) {
+        m_pLineEditName->setText(sanitizedBaseName);
+    }
+    if (needsNumberUpdate) {
+        m_pSpinBoxNumber->setValue(normalizedNumber);
+    }
 }

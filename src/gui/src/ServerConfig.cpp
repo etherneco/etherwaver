@@ -40,6 +40,110 @@ static const struct
 
 };
 
+namespace {
+
+bool splitTrailingScreenNumber(const QString& screenName, QString& baseName, int& number)
+{
+    const QString candidate = screenName.trimmed();
+    const int dashPos = candidate.lastIndexOf('-');
+    if (dashPos <= 0 || dashPos + 1 >= candidate.length()) {
+        return false;
+    }
+
+    bool ok = false;
+    const int parsedNumber = candidate.mid(dashPos + 1).toInt(&ok);
+    if (!ok || parsedNumber <= 0) {
+        return false;
+    }
+
+    baseName = candidate.left(dashPos);
+    number = parsedNumber;
+    return !baseName.isEmpty();
+}
+
+QString ensureScreenNumberSuffix(const QString& screenName)
+{
+    const QString trimmed = screenName.trimmed();
+    if (trimmed.isEmpty()) {
+        return trimmed;
+    }
+
+    QString baseName;
+    int number = 0;
+    if (splitTrailingScreenNumber(trimmed, baseName, number)) {
+        return trimmed;
+    }
+
+    return trimmed + "-1";
+}
+
+QString baseHostName(const QString& screenName)
+{
+    QString candidate = screenName.trimmed();
+
+    while (!candidate.isEmpty()) {
+        const int dashPos = candidate.lastIndexOf('-');
+        if (dashPos <= 0 || dashPos + 1 >= candidate.length()) {
+            break;
+        }
+
+        bool ok = false;
+        const int suffixNumber = candidate.mid(dashPos + 1).toInt(&ok);
+        if (!ok || suffixNumber <= 0) {
+            break;
+        }
+
+        candidate = candidate.left(dashPos);
+    }
+
+    return candidate.isEmpty() ? screenName : candidate;
+}
+
+void normalizeScreenNames(std::vector<Screen>& screens)
+{
+    QMap<QString, QString> renamedScreens;
+
+    for (std::vector<Screen>::iterator it = screens.begin(); it != screens.end(); ++it) {
+        if (it->isNull()) {
+            continue;
+        }
+
+        const QString oldName = it->name();
+        const QString normalizedName = ensureScreenNumberSuffix(oldName);
+        if (oldName.compare(normalizedName, Qt::CaseInsensitive) != 0) {
+            renamedScreens.insert(oldName.toLower(), normalizedName);
+            it->setName(normalizedName);
+        }
+    }
+
+    for (std::vector<Screen>::iterator it = screens.begin(); it != screens.end(); ++it) {
+        if (it->isNull()) {
+            continue;
+        }
+
+        const Screen::LinkDirection directions[] = {
+            Screen::LinkRight, Screen::LinkLeft, Screen::LinkUp, Screen::LinkDown
+        };
+        for (unsigned int i = 0; i < sizeof(directions) / sizeof(directions[0]); ++i) {
+            const QString target = it->link(directions[i]).trimmed();
+            if (target.isEmpty()) {
+                continue;
+            }
+
+            QMap<QString, QString>::const_iterator renamed =
+                renamedScreens.find(target.toLower());
+            if (renamed != renamedScreens.end()) {
+                it->setLink(directions[i], renamed.value());
+            }
+            else {
+                it->setLink(directions[i], ensureScreenNumberSuffix(target));
+            }
+        }
+    }
+}
+
+} // namespace
+
 const int serverDefaultIndex = 7;
 
 ServerConfig::ServerConfig(QSettings* settings, int numColumns, int numRows ,
@@ -83,8 +187,8 @@ bool ServerConfig::saveLayout(const QString& configFileName) const
     const QString layoutPath =
         configInfo.absoluteDir().absoluteFilePath("etherwaver-layout.json");
 
-    QFile file(layoutPath);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+    QSaveFile file(layoutPath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         return false;
     }
 
@@ -102,19 +206,9 @@ bool ServerConfig::saveLayout(const QString& configFileName) const
         }
         first = false;
 
-        // Extract base hostname from "hostname-N" format used for multi-monitor screens.
-        // Screen IDs use the full name (e.g. "nawa_kompa-1") while the host field must
-        // match the actual hostname the client connects with (e.g. "nawa_kompa").
-        QString hostName = screen.name();
-        {
-            QRegExp pattern("^(.*?)-(\\d+)$");
-            if (pattern.exactMatch(hostName)) {
-                const QString base = pattern.cap(1);
-                if (!base.isEmpty()) {
-                    hostName = base;
-                }
-            }
-        }
+        // The host field should contain the machine hostname without any
+        // trailing screen-number suffixes.
+        QString hostName = baseHostName(screen.name());
 
         const QSize size = screen.size().isValid() ? screen.size() : QSize(240, 140);
         out << "    {\n"
@@ -143,7 +237,9 @@ bool ServerConfig::saveLayout(const QString& configFileName) const
     }
 
     out << "\n  ]\n}\n";
-    return true;
+    out.flush();
+
+    return file.commit();
 }
 
 void ServerConfig::save(QFile& file) const
@@ -249,6 +345,7 @@ void ServerConfig::loadSettings()
         screens()[i].loadSettings(settings());
     }
     settings().endArray();
+    normalizeScreenNames(screens());
 
     int numHotkeys = settings().beginReadArray("hotkeys");
     for (int i = 0; i < numHotkeys; i++)
@@ -263,6 +360,7 @@ void ServerConfig::loadSettings()
     settings().endGroup();
 
     // ensure the server's own screen is always present in the config
+    m_ServerName = ensureScreenNumberSuffix(m_ServerName);
     int serverIndex = -1;
     if (!m_ServerName.isEmpty() && !findScreenName(m_ServerName, serverIndex)) {
         fixNoServer(m_ServerName, serverIndex);
@@ -400,6 +498,7 @@ int ServerConfig::numScreens() const
 
 int ServerConfig::autoAddScreen(const QString name)
 {
+    const QString normalizedName = ensureScreenNumberSuffix(name);
     int serverIndex = -1;
     int targetIndex = -1;
     if (!findScreenName(m_ServerName, serverIndex)) {
@@ -407,19 +506,19 @@ int ServerConfig::autoAddScreen(const QString name)
             return kAutoAddScreenManualServer;
         }
     }
-    if (findScreenName(name, targetIndex)) {
+    if (findScreenName(normalizedName, targetIndex)) {
         // already exists.
         return kAutoAddScreenIgnore;
     }
 
-    int result = showAddClientDialog(name);
+    int result = showAddClientDialog(normalizedName);
 
     if (result == kAddClientIgnore) {
         return kAutoAddScreenIgnore;
     }
 
     if (result == kAddClientOther) {
-        addToFirstEmptyGrid(name);
+        addToFirstEmptyGrid(normalizedName);
         return kAutoAddScreenManualClient;
     }
 
@@ -446,7 +545,7 @@ int ServerConfig::autoAddScreen(const QString name)
                     neighbourDirs[dirIndex].y);
     while (idx != -1) {
         if (screens()[idx].isNull()) {
-            m_Screens[idx].setName(name);
+            m_Screens[idx].setName(normalizedName);
             success = true;
             break;
         }
@@ -457,7 +556,7 @@ int ServerConfig::autoAddScreen(const QString name)
     }
 
     if (!success) {
-        addToFirstEmptyGrid(name);
+        addToFirstEmptyGrid(normalizedName);
         return kAutoAddScreenManualClient;
     }
 
@@ -467,10 +566,11 @@ int ServerConfig::autoAddScreen(const QString name)
 
 bool ServerConfig::findScreenName(const QString& name, int& index)
 {
+    const QString normalizedName = ensureScreenNumberSuffix(name);
     bool found = false;
     for (int i = 0; i < screens().size(); i++) {
         if (!screens()[i].isNull() &&
-            screens()[i].name().compare(name) == 0) {
+            screens()[i].name().compare(normalizedName, Qt::CaseInsensitive) == 0) {
             index = i;
             found = true;
             break;
@@ -482,8 +582,9 @@ bool ServerConfig::findScreenName(const QString& name, int& index)
 bool ServerConfig::fixNoServer(const QString& name, int& index)
 {
     bool fixed = false;
+    const QString normalizedName = ensureScreenNumberSuffix(name);
     if (screens()[serverDefaultIndex].isNull()) {
-        m_Screens[serverDefaultIndex].setName(name);
+        m_Screens[serverDefaultIndex].setName(normalizedName);
         index = serverDefaultIndex;
         fixed = true;
     }
@@ -500,7 +601,7 @@ int ServerConfig::showAddClientDialog(const QString& clientName)
         m_pMainWindow->activateWindow();
     }
 
-    AddClientDialog addClientDialog(clientName, m_pMainWindow);
+    AddClientDialog addClientDialog(ensureScreenNumberSuffix(clientName), m_pMainWindow);
     addClientDialog.exec();
     result = addClientDialog.addResult();
     m_IgnoreAutoConfigClient = addClientDialog.ignoreAutoConfigClient();
@@ -510,9 +611,10 @@ int ServerConfig::showAddClientDialog(const QString& clientName)
 
 void::ServerConfig::addToFirstEmptyGrid(const QString &clientName)
 {
+    const QString normalizedName = ensureScreenNumberSuffix(clientName);
     for (int i = 0; i < screens().size(); i++) {
         if (screens()[i].isNull()) {
-            m_Screens[i].setName(clientName);
+            m_Screens[i].setName(normalizedName);
             break;
         }
     }

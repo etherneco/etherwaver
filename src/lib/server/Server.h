@@ -318,6 +318,10 @@ private:
     bool                trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion);
     void                refreshPrimaryUhidGeometry();
     bool                trySwitchUsingUhidDirection(IUhidEdgeTransitionHandler::Direction direction);
+    void                rememberRecentObjectLayoutSwitch(BaseClientProxy* src,
+                            BaseClientProxy* dst, EDirection direction);
+    bool                isRecentReverseSwitch(BaseClientProxy* newScreen,
+                            EDirection direction) const;
 
     // event handlers
     void                handleShapeChanged(const Event&, void*);
@@ -524,6 +528,11 @@ private:
     std::unique_ptr<UhidTransitionHandler> m_uhidTransitionHandler;
     UhidEdgeTransitionService m_uhidEdgeTransitionService;
     bool                m_uhidTransitionTriggered;
+    Stopwatch           m_recentSwitchTimer;
+    bool                m_recentSwitchArmed;
+    BaseClientProxy*    m_recentSwitchSource;
+    BaseClientProxy*    m_recentSwitchDestination;
+    EDirection          m_recentSwitchDirection;
 
     void                httpLoop();
 };

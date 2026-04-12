@@ -112,6 +112,34 @@ mapInclusiveCoordinate(int value, int srcMin, int srcMax, int dstMin, int dstMax
     return dstMin + (srcOffset * dstSpan) / srcSpan;
 }
 
+static int
+applyTransitionInset(int value, int minValue, int maxValue, EDirection direction)
+{
+    static const int kTransitionInset = 24;
+    if (maxValue <= minValue) {
+        return minValue;
+    }
+
+    switch (direction) {
+    case kLeft:
+        return std::min(value, maxValue - kTransitionInset);
+
+    case kRight:
+        return std::max(value, minValue + kTransitionInset);
+
+    case kTop:
+        return std::min(value, maxValue - kTransitionInset);
+
+    case kBottom:
+        return std::max(value, minValue + kTransitionInset);
+
+    case kNoDirection:
+        return value;
+    }
+
+    return value;
+}
+
 static IUhidEdgeTransitionHandler::Direction
 toUhidDirection(EDirection dir)
 {
@@ -150,6 +178,29 @@ fromUhidDirection(IUhidEdgeTransitionHandler::Direction dir)
 
     case IUhidEdgeTransitionHandler::kBottom:
         return kBottom;
+    }
+
+    return kNoDirection;
+}
+
+static EDirection
+oppositeDirection(EDirection dir)
+{
+    switch (dir) {
+    case kLeft:
+        return kRight;
+
+    case kRight:
+        return kLeft;
+
+    case kTop:
+        return kBottom;
+
+    case kBottom:
+        return kTop;
+
+    case kNoDirection:
+        return kNoDirection;
     }
 
     return kNoDirection;
@@ -462,6 +513,11 @@ Server::Server(
 	m_running(false)
     , m_uhidTransitionHandler(new UhidTransitionHandler(this))
     , m_uhidTransitionTriggered(false)
+    , m_recentSwitchTimer(true)
+    , m_recentSwitchArmed(false)
+    , m_recentSwitchSource(NULL)
+    , m_recentSwitchDestination(NULL)
+    , m_recentSwitchDirection(kNoDirection)
 {
 	// must have a primary client and it must have a canonical name
 	assert(m_primaryClient != NULL);
@@ -718,7 +774,12 @@ Server::Server() :
     m_running(false),
     m_uhidTransitionHandler(),
     m_uhidEdgeTransitionService(UhidEdgeTransitionService::Config()),
-    m_uhidTransitionTriggered(false)
+    m_uhidTransitionTriggered(false),
+    m_recentSwitchTimer(true),
+    m_recentSwitchArmed(false),
+    m_recentSwitchSource(NULL),
+    m_recentSwitchDestination(NULL),
+    m_recentSwitchDirection(kNoDirection)
 {
 }
 #endif
@@ -1107,6 +1168,7 @@ Server::reloadScreenLayout()
 bool
 Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
 {
+    BaseClientProxy* const sourceClient = m_active;
     const etherwaver::layout::Screen* sourceScreen = getActiveLayoutScreen();
     if (sourceScreen == NULL) {
         LOG((CLOG_INFO
@@ -1203,6 +1265,10 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
                                         dy, ah);
     targetX = clampInt(targetX, dx, dx + aw - 1);
     targetY = clampInt(targetY, dy, dy + ah - 1);
+    targetX = clampInt(applyTransitionInset(targetX, dx, dx + aw - 1, direction),
+                       dx, dx + aw - 1);
+    targetY = clampInt(applyTransitionInset(targetY, dy, dy + ah - 1, direction),
+                       dy, dy + ah - 1);
 
     if (!isSwitchOkay(destinationClient, direction, targetX, targetY, xActive, yActive)) {
         LOG((CLOG_INFO
@@ -1221,6 +1287,7 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
         getName(destinationClient).c_str(),
         targetX, targetY));
 
+    rememberRecentObjectLayoutSwitch(sourceClient, destinationClient, direction);
     switchScreen(destinationClient, targetX, targetY, false, resolvedDestination->m_id);
     if (!absoluteMotion) {
         m_x = targetX;
@@ -1295,6 +1362,36 @@ void
 Server::onTransition(IUhidEdgeTransitionHandler::Direction direction)
 {
     m_uhidTransitionTriggered = trySwitchUsingUhidDirection(direction);
+}
+
+void
+Server::rememberRecentObjectLayoutSwitch(BaseClientProxy* src,
+                                         BaseClientProxy* dst,
+                                         EDirection direction)
+{
+    m_recentSwitchSource = src;
+    m_recentSwitchDestination = dst;
+    m_recentSwitchDirection = direction;
+    m_recentSwitchTimer.reset();
+    m_recentSwitchArmed = true;
+}
+
+bool
+Server::isRecentReverseSwitch(BaseClientProxy* newScreen, EDirection direction) const
+{
+    static const double kRecentReverseSwitchCooldown = 0.35;
+
+    if (!m_recentSwitchArmed || m_active == NULL) {
+        return false;
+    }
+
+    if (m_recentSwitchTimer.getTime() > kRecentReverseSwitchCooldown) {
+        return false;
+    }
+
+    return (m_active == m_recentSwitchDestination &&
+            newScreen == m_recentSwitchSource &&
+            direction == oppositeDirection(m_recentSwitchDirection));
 }
 
 UInt32
@@ -1830,6 +1927,11 @@ Server::isSwitchOkay(BaseClientProxy* newScreen,
 		stopSwitch();
 		return false;
 	}
+
+    if (isRecentReverseSwitch(newScreen, dir)) {
+        LOG((CLOG_DEBUG1 "blocked recent reverse switch"));
+        return false;
+    }
 
 	// should we switch or not?
 	bool preventSwitch = false;

@@ -144,6 +144,21 @@ QString resolveExecutablePath(const QString& baseDir, const QString& name)
     searchDirs << appDir.absoluteFilePath("../../cmd");
     searchDirs << appDir.absoluteFilePath("../../src/cmd");
 
+    const QString dirName = appDir.dirName();
+    const QStringList configDirs = QStringList()
+        << "Debug"
+        << "Release"
+        << "RelWithDebInfo"
+        << "MinSizeRel";
+
+    if (configDirs.contains(dirName)) {
+        const QDir parentDir = QFileInfo(appDir.absolutePath()).dir();
+        searchDirs << parentDir.absolutePath();
+        searchDirs << parentDir.absoluteFilePath("../bin/" + dirName);
+        searchDirs << parentDir.absoluteFilePath("../../bin/" + dirName);
+        searchDirs << parentDir.absoluteFilePath("bin/" + dirName);
+    }
+
     for (QStringList::const_iterator dirIt = searchDirs.begin(); dirIt != searchDirs.end(); ++dirIt) {
         const QDir dir(*dirIt);
         for (QStringList::const_iterator nameIt = names.begin(); nameIt != names.end(); ++nameIt) {

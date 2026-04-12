@@ -137,6 +137,11 @@ set_target_properties(waver PROPERTIES OUTPUT_NAME "waver")
 target_link_libraries(waver net base io Qt5::Core Qt5::Widgets Qt5::Network Qt5::Svg ${OPENSSL_LIBS})
 target_compile_definitions (waver PRIVATE -DBARRIER_VERSION_STAGE="${BARRIER_VERSION_STAGE}")
 target_compile_definitions (waver PRIVATE -DBARRIER_REVISION="${BARRIER_REVISION}")
+add_dependencies(waver waverc wavers)
+
+if (WIN32 OR (UNIX AND NOT APPLE))
+    add_dependencies(waver waverd)
+endif()
 
 if (WIN32)
     include_directories ($ENV{BONJOUR_SDK_HOME}/Include)

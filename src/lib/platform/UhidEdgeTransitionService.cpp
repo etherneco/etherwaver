@@ -68,8 +68,8 @@ UhidEdgeTransitionService::resetVirtualCursor()
         return;
     }
 
-    m_virtualX = m_geometry.m_width / 2;
-    m_virtualY = m_geometry.m_height / 2;
+    m_virtualX = m_geometry.m_x + (m_geometry.m_width / 2);
+    m_virtualY = m_geometry.m_y + (m_geometry.m_height / 2);
     m_virtualInitialized = true;
 }
 
@@ -138,16 +138,19 @@ UhidEdgeTransitionService::onRelativeMouseMotion(SInt32 dx, SInt32 dy)
         logMotion(dx, dy, stuck);
     }
 
+    const SInt32 leftEdge = m_geometry.m_x;
+    const SInt32 rightEdgeExclusive = m_geometry.m_x + m_geometry.m_width;
+    const SInt32 topEdge = m_geometry.m_y;
+    const SInt32 bottomEdgeExclusive = m_geometry.m_y + m_geometry.m_height;
+
     const bool leftIntent =
-        (dx < 0 && m_virtualX <= m_config.m_leftThreshold);
+        (dx < 0 && m_virtualX < leftEdge);
     const bool rightIntent =
-        (dx > 0 && m_virtualX >= m_geometry.m_width - 1 - m_config.m_rightThreshold);
+        (dx > 0 && m_virtualX >= rightEdgeExclusive);
     const bool topIntent =
-        (m_config.m_enableTopBottom && dy < 0 &&
-         m_virtualY <= m_config.m_topThreshold);
+        (m_config.m_enableTopBottom && dy < 0 && m_virtualY < topEdge);
     const bool bottomIntent =
-        (m_config.m_enableTopBottom && dy > 0 &&
-         m_virtualY >= m_geometry.m_height - 1 - m_config.m_bottomThreshold);
+        (m_config.m_enableTopBottom && dy > 0 && m_virtualY >= bottomEdgeExclusive);
 
     updateDirectionState(m_leftState, leftIntent);
     updateDirectionState(m_rightState, rightIntent);
@@ -261,8 +264,18 @@ UhidEdgeTransitionService::applyPostTransitionWarp(IUhidEdgeTransitionHandler::D
         return;
     }
 
-    const SInt32 rightWarp = std::max<SInt32>(0, m_geometry.m_width - 1 - m_config.m_warpOffset);
-    const SInt32 bottomWarp = std::max<SInt32>(0, m_geometry.m_height - 1 - m_config.m_warpOffset);
+    const SInt32 leftWarp =
+        std::min<SInt32>(m_geometry.m_x + m_config.m_warpOffset,
+                         m_geometry.m_x + m_geometry.m_width - 1);
+    const SInt32 rightWarp =
+        std::max<SInt32>(m_geometry.m_x,
+                         m_geometry.m_x + m_geometry.m_width - 1 - m_config.m_warpOffset);
+    const SInt32 topWarp =
+        std::min<SInt32>(m_geometry.m_y + m_config.m_warpOffset,
+                         m_geometry.m_y + m_geometry.m_height - 1);
+    const SInt32 bottomWarp =
+        std::max<SInt32>(m_geometry.m_y,
+                         m_geometry.m_y + m_geometry.m_height - 1 - m_config.m_warpOffset);
 
     switch (direction) {
     case IUhidEdgeTransitionHandler::kLeft:
@@ -270,7 +283,7 @@ UhidEdgeTransitionService::applyPostTransitionWarp(IUhidEdgeTransitionHandler::D
         break;
 
     case IUhidEdgeTransitionHandler::kRight:
-        m_virtualX = std::min<SInt32>(m_config.m_warpOffset, m_geometry.m_width - 1);
+        m_virtualX = leftWarp;
         break;
 
     case IUhidEdgeTransitionHandler::kTop:
@@ -278,7 +291,7 @@ UhidEdgeTransitionService::applyPostTransitionWarp(IUhidEdgeTransitionHandler::D
         break;
 
     case IUhidEdgeTransitionHandler::kBottom:
-        m_virtualY = std::min<SInt32>(m_config.m_warpOffset, m_geometry.m_height - 1);
+        m_virtualY = topWarp;
         break;
     }
 }

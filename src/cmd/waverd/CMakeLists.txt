@@ -14,16 +14,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-file(GLOB headers "*.h")
-file(GLOB sources "*.cpp")
 if (WIN32)
-    list(APPEND sources waverd.rc)
-endif()
-
-if (WIN32)
-  add_executable (waverd WIN32 ${sources})
-else()
-  add_executable (waverd ${sources})
+    set(sources barrierd.cpp waverd.rc)
+    add_executable(waverd WIN32 ${sources})
+elseif (UNIX AND NOT APPLE)
+    set(sources linux_main.cpp)
+    add_executable(waverd ${sources})
 endif()
 
 target_link_libraries (waverd

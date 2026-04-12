@@ -17,6 +17,6 @@
 add_subdirectory(barrierc)
 add_subdirectory(barriers)
 
-if (WIN32)
+if (WIN32 OR (UNIX AND NOT APPLE))
     add_subdirectory(waverd)
 endif()

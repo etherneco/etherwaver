@@ -75,6 +75,7 @@ class AppConfig: public QObject
         bool wizardShouldRun() const;
         const QString& language() const;
         bool startedBefore() const;
+        const QString& serverHostname() const;
         bool autoConfig() const;
         void setAutoConfig(bool autoConfig);
         bool autoConfigPrompted();
@@ -122,6 +123,7 @@ protected:
         void setWizardHasRun();
         void setLanguage(const QString language);
         void setStartedBefore(bool b);
+        void setServerHostname(const QString& hostname);
         void setElevateMode(ElevateMode em);
         void loadSettings();
 
@@ -137,6 +139,7 @@ protected:
         ProcessMode m_ProcessMode;
         QString m_Language;
         bool m_StartedBefore;
+        QString m_ServerHostname;
         bool m_AutoConfig;
         ElevateMode m_ElevateMode;
         bool m_AutoConfigPrompted;

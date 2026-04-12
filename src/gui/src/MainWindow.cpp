@@ -96,6 +96,85 @@ static const char* barrierIconNames[] =
 
 static const char* barrierLargeIcon = ":/res/icons/256x256/barrier.ico";
 
+namespace {
+
+QString persistentGuiStatePath()
+{
+    const QString profilePath = QString::fromStdString(barrier::DataDirectories::profile().u8string());
+    QDir profileDir(profilePath);
+    if (!profileDir.exists()) {
+        profileDir.mkpath(".");
+    }
+
+    return profileDir.filePath("gui-state.ini");
+}
+
+QStringList executableAliases(const QString& name)
+{
+    QStringList names;
+    names << name;
+
+    if (name == "wavers") {
+        names << "barriers" << "waverd" << "barrierd";
+    }
+    else if (name == "wavers.exe") {
+        names << "barriers.exe" << "waverd.exe" << "barrierd.exe";
+    }
+    else if (name == "waverc") {
+        names << "barrierc";
+    }
+    else if (name == "waverc.exe") {
+        names << "barrierc.exe";
+    }
+
+    names.removeDuplicates();
+    return names;
+}
+
+QString resolveExecutablePath(const QString& baseDir, const QString& name)
+{
+    const QDir appDir(baseDir);
+    const QStringList names = executableAliases(name);
+    QStringList searchDirs;
+    searchDirs << appDir.absolutePath();
+    searchDirs << appDir.absoluteFilePath("../bin");
+    searchDirs << appDir.absoluteFilePath("../cmd");
+    searchDirs << appDir.absoluteFilePath("../src/cmd");
+    searchDirs << appDir.absoluteFilePath("../../bin");
+    searchDirs << appDir.absoluteFilePath("../../cmd");
+    searchDirs << appDir.absoluteFilePath("../../src/cmd");
+
+    const QString dirName = appDir.dirName();
+    const QStringList configDirs = QStringList()
+        << "Debug"
+        << "Release"
+        << "RelWithDebInfo"
+        << "MinSizeRel";
+
+    if (configDirs.contains(dirName)) {
+        const QDir parentDir = QFileInfo(appDir.absolutePath()).dir();
+        searchDirs << parentDir.absolutePath();
+        searchDirs << parentDir.absoluteFilePath("../bin/" + dirName);
+        searchDirs << parentDir.absoluteFilePath("../../bin/" + dirName);
+        searchDirs << parentDir.absoluteFilePath("bin/" + dirName);
+    }
+
+    for (QStringList::const_iterator dirIt = searchDirs.begin(); dirIt != searchDirs.end(); ++dirIt) {
+        const QDir dir(*dirIt);
+        for (QStringList::const_iterator nameIt = names.begin(); nameIt != names.end(); ++nameIt) {
+            const QString candidate = dir.absoluteFilePath(*nameIt);
+            QFileInfo info(candidate);
+            if (info.exists() && info.isFile()) {
+                return info.absoluteFilePath();
+            }
+        }
+    }
+
+    return appDir.absoluteFilePath(name);
+}
+
+}
+
 MainWindow::MainWindow(QSettings& settings, AppConfig& appConfig) :
     m_Settings(settings),
     m_AppConfig(&appConfig),
@@ -137,11 +216,13 @@ MainWindow::MainWindow(QSettings& settings, AppConfig& appConfig) :
     m_pLabelIpAddresses->setText(getIPAddresses());
 
 #if defined(Q_OS_WIN)
-    // ipc must always be enabled, so that we can disable command when switching to desktop mode.
     connect(&m_IpcClient, SIGNAL(readLogLine(const QString&)), this, SLOT(appendLogRaw(const QString&)));
     connect(&m_IpcClient, SIGNAL(errorMessage(const QString&)), this, SLOT(appendLogError(const QString&)));
     connect(&m_IpcClient, SIGNAL(infoMessage(const QString&)), this, SLOT(appendLogInfo(const QString&)));
-    m_IpcClient.connectToHost();
+    // only connect to IPC daemon when running in Service mode
+    if (appConfig.processMode() == Service) {
+        m_IpcClient.connectToHost();
+    }
 #endif
 
     // change default size based on os
@@ -286,15 +367,33 @@ void MainWindow::createMenuBar()
 
 void MainWindow::loadSettings()
 {
+    QSettings persistentSettings(persistentGuiStatePath(), QSettings::IniFormat);
+
     // the next two must come BEFORE loading groupServerChecked and groupClientChecked or
     // disabling and/or enabling the right widgets won't automatically work
-    m_pRadioExternalConfig->setChecked(settings().value("useExternalConfig", false).toBool());
-    m_pRadioInternalConfig->setChecked(settings().value("useInternalConfig", true).toBool());
+    m_pRadioExternalConfig->setChecked(
+        persistentSettings.value(
+            "useExternalConfig",
+            settings().value("useExternalConfig", false)).toBool());
+    m_pRadioInternalConfig->setChecked(
+        persistentSettings.value(
+            "useInternalConfig",
+            settings().value("useInternalConfig", true)).toBool());
 
-    m_pGroupServer->setChecked(settings().value("groupServerChecked", false).toBool());
-    m_pLineEditConfigFile->setText(settings().value("configFile", QDir::homePath() + "/" + barrierConfigName).toString());
-    m_pGroupClient->setChecked(settings().value("groupClientChecked", true).toBool());
-    m_pLineEditHostname->setText(settings().value("serverHostname").toString());
+    m_pGroupServer->setChecked(
+        persistentSettings.value(
+            "groupServerChecked",
+            settings().value("groupServerChecked", false)).toBool());
+    m_pLineEditConfigFile->setText(
+        persistentSettings.value(
+            "configFile",
+            settings().value("configFile", QDir::homePath() + "/" + barrierConfigName)).toString());
+    m_pGroupClient->setChecked(
+        persistentSettings.value(
+            "groupClientChecked",
+            settings().value("groupClientChecked", true)).toBool());
+    m_pLineEditHostname->setText(
+        persistentSettings.value("serverHostname", appConfig().serverHostname()).toString().trimmed());
 }
 
 void MainWindow::initConnections()
@@ -309,15 +408,26 @@ void MainWindow::initConnections()
 
 void MainWindow::saveSettings()
 {
+    QSettings persistentSettings(persistentGuiStatePath(), QSettings::IniFormat);
+
     // program settings
     settings().setValue("groupServerChecked", m_pGroupServer->isChecked());
     settings().setValue("useExternalConfig", m_pRadioExternalConfig->isChecked());
     settings().setValue("configFile", m_pLineEditConfigFile->text());
     settings().setValue("useInternalConfig", m_pRadioInternalConfig->isChecked());
     settings().setValue("groupClientChecked", m_pGroupClient->isChecked());
-    settings().setValue("serverHostname", m_pLineEditHostname->text());
+    appConfig().setServerHostname(m_pLineEditHostname->text());
+    settings().setValue("serverHostname", appConfig().serverHostname());
 
     settings().sync();
+
+    persistentSettings.setValue("groupServerChecked", m_pGroupServer->isChecked());
+    persistentSettings.setValue("useExternalConfig", m_pRadioExternalConfig->isChecked());
+    persistentSettings.setValue("configFile", m_pLineEditConfigFile->text());
+    persistentSettings.setValue("useInternalConfig", m_pRadioInternalConfig->isChecked());
+    persistentSettings.setValue("groupClientChecked", m_pGroupClient->isChecked());
+    persistentSettings.setValue("serverHostname", appConfig().serverHostname());
+    persistentSettings.sync();
 }
 
 void MainWindow::setIcon(qBarrierState state)
@@ -500,6 +610,9 @@ void MainWindow::proofreadInfo()
 
 void MainWindow::startBarrier()
 {
+    saveSettings();
+    appConfig().saveSettings();
+
     bool desktopMode = appConfig().processMode() == Desktop;
     bool serviceMode = appConfig().processMode() == Service;
 
@@ -557,7 +670,7 @@ void MainWindow::startBarrier()
     // launched the process (e.g. when launched with elevation). setting the
     // profile dir on launch ensures it uses the same profile dir is used
     // no matter how its relaunched.
-    args << "--profile-dir" << QString::fromStdString("\"" + barrier::DataDirectories::profile().u8string() + "\"");
+    args << "--profile-dir" << QString::fromStdString(barrier::DataDirectories::profile().u8string());
 #endif
 
     if ((barrier_type() == BarrierType::Client && !clientArgs(args, app))
@@ -609,6 +722,7 @@ void MainWindow::startBarrier()
 bool MainWindow::clientArgs(QStringList& args, QString& app)
 {
     app = appPath(appConfig().barriercName());
+    const QString hostname = m_pLineEditHostname->text().trimmed();
 
     if (!QFile::exists(app))
     {
@@ -617,11 +731,6 @@ bool MainWindow::clientArgs(QStringList& args, QString& app)
                              tr("The executable for the waver client does not exist."));
         return false;
     }
-
-#if defined(Q_OS_WIN)
-    // wrap in quotes so a malicious user can't start \Program.exe as admin.
-    app = QString("\"%1\"").arg(app);
-#endif
 
     if (appConfig().logToFile())
     {
@@ -647,7 +756,7 @@ bool MainWindow::clientArgs(QStringList& args, QString& app)
             args << "[" + serverIp + "]:" + QString::number(appConfig().port());
             return true;
         }
-    } else if (m_pLineEditHostname->text().isEmpty()) {
+    } else if (hostname.isEmpty()) {
         show();
         if (!m_SuppressEmptyServerWarning) {
             QMessageBox::warning(this, tr("Hostname is empty"),
@@ -656,7 +765,7 @@ bool MainWindow::clientArgs(QStringList& args, QString& app)
         return false;
     }
 
-    args << "[" + m_pLineEditHostname->text() + "]:" + QString::number(appConfig().port());
+    args << "[" + hostname + "]:" + QString::number(appConfig().port());
 
     return true;
 }
@@ -712,7 +821,7 @@ QString MainWindow::address()
 
 QString MainWindow::appPath(const QString& name)
 {
-    return appConfig().barrierProgramDir() + name;
+    return resolveExecutablePath(appConfig().barrierProgramDir(), name);
 }
 
 bool MainWindow::serverArgs(QStringList& args, QString& app)
@@ -726,11 +835,6 @@ bool MainWindow::serverArgs(QStringList& args, QString& app)
         return false;
     }
 
-#if defined(Q_OS_WIN)
-    // wrap in quotes so a malicious user can't start \Program.exe as admin.
-    app = QString("\"%1\"").arg(app);
-#endif
-
     if (appConfig().logToFile())
     {
         appConfig().persistLogDir();
@@ -743,10 +847,6 @@ bool MainWindow::serverArgs(QStringList& args, QString& app)
     }
 
     QString configFilename = this->configFilename();
-#if defined(Q_OS_WIN)
-    // wrap in quotes in case username contains spaces.
-    configFilename = QString("\"%1\"").arg(configFilename);
-#endif
     args << "-c" << configFilename << "--address" << address();
 
     return true;

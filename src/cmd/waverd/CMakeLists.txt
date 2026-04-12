@@ -1,6 +1,6 @@
 # barrier -- mouse and keyboard sharing utility
 # Copyright (C) 2012-2016 Symless Ltd.
-# Copyright (C) 2011 Nick Bolton
+# Copyright (C) 2012 Nick Bolton
 #
 # This package is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -14,9 +14,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-add_subdirectory(barrierc)
-add_subdirectory(barriers)
-
-if (WIN32 OR (UNIX AND NOT APPLE))
-    add_subdirectory(waverd)
+if (WIN32)
+    set(sources barrierd.cpp waverd.rc)
+    add_executable(waverd WIN32 ${sources})
+elseif (UNIX AND NOT APPLE)
+    set(sources linux_main.cpp)
+    add_executable(waverd ${sources})
 endif()
+
+target_link_libraries (waverd
+    arch base common io ipc mt net platform synlib ${libs} ${OPENSSL_LIBS})

@@ -5,6 +5,116 @@
 namespace etherwaver {
 namespace layout {
 
+namespace {
+
+const Screen*
+resolveLinkedScreen(const std::vector<Screen>& screens, const std::string& target)
+{
+    if (target.empty()) {
+        return NULL;
+    }
+
+    for (std::vector<Screen>::const_iterator it = screens.begin(); it != screens.end(); ++it) {
+        if (it->m_id == target || it->m_name == target) {
+            return &(*it);
+        }
+    }
+
+    return NULL;
+}
+
+bool
+rangesOverlapLocal(int start1, int end1, int start2, int end2)
+{
+    return (start1 < end2 && start2 < end1);
+}
+
+bool
+scoreDirectionalCandidate(const Screen& source,
+                          const Screen& candidate,
+                          EDirection direction,
+                          int& distance,
+                          int& offset)
+{
+    const int sourceRight = source.m_x + source.m_width;
+    const int sourceBottom = source.m_y + source.m_height;
+    const int sourceCenterX = source.m_x + source.m_width / 2;
+    const int sourceCenterY = source.m_y + source.m_height / 2;
+    const int candidateRight = candidate.m_x + candidate.m_width;
+    const int candidateBottom = candidate.m_y + candidate.m_height;
+    const int candidateCenterX = candidate.m_x + candidate.m_width / 2;
+    const int candidateCenterY = candidate.m_y + candidate.m_height / 2;
+
+    switch (direction) {
+    case kLeft:
+        if ((candidateRight <= source.m_x) &&
+            rangesOverlapLocal(candidate.m_y, candidate.m_y + candidate.m_height,
+                               source.m_y, source.m_y + source.m_height)) {
+            distance = source.m_x - candidateRight;
+            offset = std::abs(candidateCenterY - sourceCenterY);
+            return true;
+        }
+        break;
+
+    case kRight:
+        if ((sourceRight <= candidate.m_x) &&
+            rangesOverlapLocal(candidate.m_y, candidate.m_y + candidate.m_height,
+                               source.m_y, source.m_y + source.m_height)) {
+            distance = candidate.m_x - sourceRight;
+            offset = std::abs(candidateCenterY - sourceCenterY);
+            return true;
+        }
+        break;
+
+    case kTop:
+        if ((candidateBottom <= source.m_y) &&
+            rangesOverlapLocal(candidate.m_x, candidate.m_x + candidate.m_width,
+                               source.m_x, source.m_x + source.m_width)) {
+            distance = source.m_y - candidateBottom;
+            offset = std::abs(candidateCenterX - sourceCenterX);
+            return true;
+        }
+        break;
+
+    case kBottom:
+        if ((sourceBottom <= candidate.m_y) &&
+            rangesOverlapLocal(candidate.m_x, candidate.m_x + candidate.m_width,
+                               source.m_x, source.m_x + source.m_width)) {
+            distance = candidate.m_y - sourceBottom;
+            offset = std::abs(candidateCenterX - sourceCenterX);
+            return true;
+        }
+        break;
+
+    default:
+        break;
+    }
+
+    return false;
+}
+
+const std::string&
+getDirectionalLink(const Screen& screen, EDirection direction)
+{
+    switch (direction) {
+    case kLeft:
+        return screen.m_leftLink;
+    case kRight:
+        return screen.m_rightLink;
+    case kTop:
+        return screen.m_topLink;
+    case kBottom:
+        return screen.m_bottomLink;
+    default:
+        break;
+    }
+
+    static const std::string kEmpty;
+    return kEmpty;
+}
+
+} // namespace
+
 void
 ScreenManager::setScreens(const std::vector<Screen>& screens)
 {
@@ -101,8 +211,18 @@ ScreenManager::findScreenInDirection(const std::string& screenId, EDirection dir
         return NULL;
     }
 
+    const std::string& directionalLink = getDirectionalLink(*source, direction);
+    const Screen* linked = resolveLinkedScreen(m_screens, directionalLink);
+    if (linked != NULL && linked->m_id != source->m_id) {
+        return linked;
+    }
+
+    const bool constrainToLinkedHost =
+        !directionalLink.empty() && m_indicesByHost.find(directionalLink) != m_indicesByHost.end();
+
     const Screen* best = NULL;
     int bestDistance = std::numeric_limits<int>::max();
+    int bestOffset = std::numeric_limits<int>::max();
 
     for (std::vector<Screen>::const_iterator it = m_screens.begin();
          it != m_screens.end(); ++it) {
@@ -110,55 +230,17 @@ ScreenManager::findScreenInDirection(const std::string& screenId, EDirection dir
             continue;
         }
 
-        bool adjacent = false;
-        int distance = std::numeric_limits<int>::max();
-        switch (direction) {
-        case kLeft:
-            adjacent =
-                (it->m_x + it->m_width == source->m_x) &&
-                rangesOverlap(it->m_y, it->m_y + it->m_height,
-                              source->m_y, source->m_y + source->m_height);
-            if (adjacent) {
-                distance = source->m_x - it->m_x;
-            }
-            break;
-
-        case kRight:
-            adjacent =
-                (source->m_x + source->m_width == it->m_x) &&
-                rangesOverlap(it->m_y, it->m_y + it->m_height,
-                              source->m_y, source->m_y + source->m_height);
-            if (adjacent) {
-                distance = it->m_x - source->m_x;
-            }
-            break;
-
-        case kTop:
-            adjacent =
-                (it->m_y + it->m_height == source->m_y) &&
-                rangesOverlap(it->m_x, it->m_x + it->m_width,
-                              source->m_x, source->m_x + source->m_width);
-            if (adjacent) {
-                distance = source->m_y - it->m_y;
-            }
-            break;
-
-        case kBottom:
-            adjacent =
-                (source->m_y + source->m_height == it->m_y) &&
-                rangesOverlap(it->m_x, it->m_x + it->m_width,
-                              source->m_x, source->m_x + source->m_width);
-            if (adjacent) {
-                distance = it->m_y - source->m_y;
-            }
-            break;
-
-        default:
-            break;
+        if (constrainToLinkedHost && it->m_hostId != directionalLink) {
+            continue;
         }
 
-        if (adjacent && distance < bestDistance) {
+        int distance = std::numeric_limits<int>::max();
+        int offset = std::numeric_limits<int>::max();
+        if (scoreDirectionalCandidate(*source, *it, direction, distance, offset) &&
+            (distance < bestDistance ||
+             (distance == bestDistance && offset < bestOffset))) {
             bestDistance = distance;
+            bestOffset = offset;
             best = &(*it);
         }
     }

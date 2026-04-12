@@ -26,6 +26,7 @@ public:
 
     virtual void enter(SInt32 xAbs, SInt32 yAbs) = 0;
     virtual void leave() = 0;
+    virtual bool managesCursorVisibility() const = 0;
 
     virtual void keyDown(KeyID id, KeyModifierMask mask, KeyButton button) = 0;
     virtual void keyRepeat(KeyID id, KeyModifierMask mask, SInt32 count, KeyButton button) = 0;
@@ -37,4 +38,3 @@ public:
     virtual void mouseRelativeMove(SInt32 dx, SInt32 dy) = 0;
     virtual void mouseWheel(SInt32 xDelta, SInt32 yDelta) = 0;
 };
-

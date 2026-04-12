@@ -435,6 +435,7 @@ UhidServer::UhidServer()
     , m_lastAbsY(0)
     , m_mouseButtons(0)
     , m_keyboardModifiers(0)
+    , m_mouseMotionListener(NULL)
 {
     m_keyboardKeys.fill(0);
 }
@@ -492,6 +493,11 @@ void UhidServer::stop()
 bool UhidServer::running() const
 {
     return m_running;
+}
+
+void UhidServer::setMouseMotionListener(MouseMotionListener* listener)
+{
+    m_mouseMotionListener = listener;
 }
 
 void UhidServer::clearInputState()
@@ -592,6 +598,13 @@ bool UhidServer::sendRelativeMotion(SInt32 dx, SInt32 dy)
 {
     if (!m_running) {
         return false;
+    }
+
+    // Relative tracking for Wayland-safe edge detection must happen at the
+    // point we submit UHID_INPUT2 reports. /dev/uhid readback events are
+    // control-plane notifications and do not expose compositor cursor state.
+    if (m_mouseMotionListener != NULL && (dx != 0 || dy != 0)) {
+        m_mouseMotionListener->onRelativeMouseMotion(dx, dy);
     }
 
     while (dx != 0 || dy != 0) {
@@ -792,6 +805,7 @@ UhidServer::UhidServer()
     , m_lastAbsY(0)
     , m_mouseButtons(0)
     , m_keyboardModifiers(0)
+    , m_mouseMotionListener(NULL)
 {
     m_keyboardKeys.fill(0);
 }
@@ -812,6 +826,10 @@ void UhidServer::stop()
 bool UhidServer::running() const
 {
     return false;
+}
+
+void UhidServer::setMouseMotionListener(MouseMotionListener*)
+{
 }
 
 void UhidServer::clearInputState()

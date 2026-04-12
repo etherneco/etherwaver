@@ -62,6 +62,52 @@
 #include <stdio.h>
 #include <fstream>
 #include <sstream>
+#include <cctype>
+
+namespace {
+
+static bool
+isScreenIndexSuffix(const std::string& name, std::string& baseName)
+{
+    const std::string::size_type dash = name.find_last_of('-');
+    if (dash == std::string::npos || dash == 0 || dash + 1 >= name.size()) {
+        return false;
+    }
+
+    for (std::string::size_type i = dash + 1; i < name.size(); ++i) {
+        if (!std::isdigit(static_cast<unsigned char>(name[i]))) {
+            return false;
+        }
+    }
+
+    baseName = name.substr(0, dash);
+    return !baseName.empty();
+}
+
+static std::string
+resolveScreenOrHostName(const Config& config, const std::string& name)
+{
+    if (config.isScreen(name)) {
+        return config.getCanonicalName(name);
+    }
+
+    for (Config::const_iterator it = config.begin(); it != config.end(); ++it) {
+        std::string baseName;
+        if (isScreenIndexSuffix(*it, baseName) && baseName == name) {
+            return *it;
+        }
+    }
+
+    return std::string();
+}
+
+static bool
+matchesScreenOrHostName(const Config& config, const std::string& name)
+{
+    return !resolveScreenOrHostName(config, name).empty();
+}
+
+} // namespace
 
 //
 // ServerApp
@@ -460,7 +506,10 @@ bool ServerApp::initServer()
     barrier::Screen* serverScreen         = NULL;
     PrimaryClient* primaryClient = NULL;
     try {
-        String name    = args().m_config->getCanonicalName(args().m_name);
+        String name = resolveScreenOrHostName(*args().m_config, args().m_name);
+        if (name.empty()) {
+            name.clear();
+        }
         serverScreen    = openServerScreen();
         primaryClient   = openPrimaryClient(name, serverScreen);
         m_serverScreen  = serverScreen;
@@ -758,11 +807,13 @@ ServerApp::mainLoop()
     }
 
     // canonicalize the primary screen name
-    String primaryName = args().m_config->getCanonicalName(args().m_name);
-    if (primaryName.empty()) {
+    const String canonicalPrimaryName =
+        resolveScreenOrHostName(*args().m_config, args().m_name);
+    if (canonicalPrimaryName.empty()) {
         LOG((CLOG_CRIT "unknown screen name `%s'", args().m_name.c_str()));
         return kExitFailed;
     }
+    args().m_name = canonicalPrimaryName;
 
     // start server, etc
     appUtil().startNode();

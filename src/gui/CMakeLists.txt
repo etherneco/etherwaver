@@ -137,6 +137,11 @@ set_target_properties(waver PROPERTIES OUTPUT_NAME "waver")
 target_link_libraries(waver net base io Qt5::Core Qt5::Widgets Qt5::Network Qt5::Svg ${OPENSSL_LIBS})
 target_compile_definitions (waver PRIVATE -DBARRIER_VERSION_STAGE="${BARRIER_VERSION_STAGE}")
 target_compile_definitions (waver PRIVATE -DBARRIER_REVISION="${BARRIER_REVISION}")
+add_dependencies(waver waverc wavers)
+
+if (WIN32 OR (UNIX AND NOT APPLE))
+    add_dependencies(waver waverd)
+endif()
 
 if (WIN32)
     include_directories ($ENV{BONJOUR_SDK_HOME}/Include)
@@ -157,6 +162,36 @@ if (HAVE_X11)
 endif()
 
 target_link_libraries (waver common)
+
+if (WIN32)
+    set(OPENSSL_BIN_DIR "${CMAKE_SOURCE_DIR}/ext/openssl/windows/x64/bin")
+    set(QT_BIN_DIR "${Qt5Core_DIR}/../../../bin")
+    set(QT_SVG_BIN_DIR "${Qt5Svg_DIR}/../../../bin")
+    set(QT_PLUGIN_DIR "${Qt5Core_DIR}/../../../plugins")
+    set(QT_SVG_PLUGIN_DIR "${Qt5Svg_DIR}/../../../plugins")
+
+    add_custom_command(TARGET waver POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${OPENSSL_BIN_DIR}/libeay32.dll"
+            "${OPENSSL_BIN_DIR}/ssleay32.dll"
+            $<TARGET_FILE_DIR:waver>
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${QT_BIN_DIR}/Qt5Core.dll"
+            "${QT_BIN_DIR}/Qt5Gui.dll"
+            "${QT_BIN_DIR}/Qt5Widgets.dll"
+            "${QT_BIN_DIR}/Qt5Network.dll"
+            $<TARGET_FILE_DIR:waver>
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${QT_SVG_BIN_DIR}/Qt5Svg.dll"
+            $<TARGET_FILE_DIR:waver>
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:waver>/platforms"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${QT_PLUGIN_DIR}/platforms/qwindows.dll"
+            "$<TARGET_FILE_DIR:waver>/platforms/"
+        COMMENT "Copying runtime DLLs..."
+    )
+endif()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     install (TARGETS waver DESTINATION ${BARRIER_BUNDLE_BINARY_DIR})

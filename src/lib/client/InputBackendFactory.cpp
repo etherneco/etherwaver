@@ -44,6 +44,11 @@ public:
     {
     }
 
+    bool managesCursorVisibility() const override
+    {
+        return false;
+    }
+
     void keyDown(KeyID id, KeyModifierMask mask, KeyButton button) override
     {
         m_screen->keyDown(id, mask, button);
@@ -111,6 +116,11 @@ public:
     void leave() override
     {
         m_uhidServer->clearInputState();
+    }
+
+    bool managesCursorVisibility() const override
+    {
+        return true;
     }
 
     void keyDown(KeyID id, KeyModifierMask mask, KeyButton) override

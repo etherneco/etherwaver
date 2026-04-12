@@ -8,6 +8,12 @@
 
 class UhidServer {
 public:
+    class MouseMotionListener {
+    public:
+        virtual ~MouseMotionListener() {}
+        virtual void onRelativeMouseMotion(SInt32 dx, SInt32 dy) = 0;
+    };
+
     UhidServer();
     ~UhidServer();
 
@@ -15,6 +21,7 @@ public:
     void stop();
     bool running() const;
     void clearInputState();
+    void setMouseMotionListener(MouseMotionListener* listener);
 
     bool keyDown(KeyID id, KeyModifierMask mask);
     bool keyRepeat(KeyID id, KeyModifierMask mask, SInt32 count);
@@ -42,4 +49,5 @@ private:
     UInt8 m_mouseButtons;
     UInt8 m_keyboardModifiers;
     std::array<UInt8, 6> m_keyboardKeys;
+    MouseMotionListener* m_mouseMotionListener;
 };

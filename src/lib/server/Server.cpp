@@ -230,10 +230,10 @@ getHostLayoutBounds(const etherwaver::layout::ScreenManager& layout,
             continue;
         }
 
-        minX = std::min(minX, it->m_x);
-        minY = std::min(minY, it->m_y);
-        maxX = std::max(maxX, right);
-        maxY = std::max(maxY, bottom);
+        minX = std::min<int>(minX, it->m_x);
+        minY = std::min<int>(minY, it->m_y);
+        maxX = std::max<int>(maxX, right);
+        maxY = std::max<int>(maxY, bottom);
     }
 
     return found;
@@ -257,8 +257,8 @@ findLayoutScreenForPosition(const etherwaver::layout::ScreenManager& layout,
         return NULL;
     }
 
-    const int hostWidth = std::max(1, hostMaxX - hostMinX);
-    const int hostHeight = std::max(1, hostMaxY - hostMinY);
+    const int hostWidth = std::max<int>(1, hostMaxX - hostMinX);
+    const int hostHeight = std::max<int>(1, hostMaxY - hostMinY);
     const int globalX = hostMinX + ((cursorX - screenX) * hostWidth) / screenW;
     const int globalY = hostMinY + ((cursorY - screenY) * hostHeight) / screenH;
     const etherwaver::layout::Screen* screen = layout.findScreenAt(globalX, globalY);
@@ -2945,8 +2945,8 @@ Server::onMouseMovePrimary(SInt32 x, SInt32 y)
 			hostMaxY = sourceScreen->m_y + sourceScreen->m_height;
 		}
 
-		const int hostWidth = std::max(1, hostMaxX - hostMinX);
-		const int hostHeight = std::max(1, hostMaxY - hostMinY);
+		const int hostWidth = std::max<int>(1, hostMaxX - hostMinX);
+		const int hostHeight = std::max<int>(1, hostMaxY - hostMinY);
 		const int hostRight = hostMinX + hostWidth - 1;
 		const int hostBottom = hostMinY + hostHeight - 1;
 		const int localRight = ax + aw - 1;

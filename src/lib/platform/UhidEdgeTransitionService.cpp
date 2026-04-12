@@ -322,5 +322,5 @@ UhidEdgeTransitionService::directionName(IUhidEdgeTransitionHandler::Direction d
 SInt32
 UhidEdgeTransitionService::clampVirtual(SInt32 value) const
 {
-    return std::max(m_config.m_virtualMin, std::min(m_config.m_virtualMax, value));
+    return std::max<SInt32>(m_config.m_virtualMin, std::min<SInt32>(m_config.m_virtualMax, value));
 }

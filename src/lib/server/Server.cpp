@@ -122,16 +122,16 @@ applyTransitionInset(int value, int minValue, int maxValue, EDirection direction
 
     switch (direction) {
     case kLeft:
-        return std::min(value, maxValue - kTransitionInset);
+        return std::min<int>(value, maxValue - kTransitionInset);
 
     case kRight:
-        return std::max(value, minValue + kTransitionInset);
+        return std::max<int>(value, minValue + kTransitionInset);
 
     case kTop:
-        return std::min(value, maxValue - kTransitionInset);
+        return std::min<int>(value, maxValue - kTransitionInset);
 
     case kBottom:
-        return std::max(value, minValue + kTransitionInset);
+        return std::max<int>(value, minValue + kTransitionInset);
 
     case kNoDirection:
         return value;

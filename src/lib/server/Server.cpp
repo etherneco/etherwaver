@@ -112,6 +112,49 @@ mapInclusiveCoordinate(int value, int srcMin, int srcMax, int dstMin, int dstMax
     return dstMin + (srcOffset * dstSpan) / srcSpan;
 }
 
+static IUhidEdgeTransitionHandler::Direction
+toUhidDirection(EDirection dir)
+{
+    switch (dir) {
+    case kLeft:
+        return IUhidEdgeTransitionHandler::kLeft;
+
+    case kRight:
+        return IUhidEdgeTransitionHandler::kRight;
+
+    case kTop:
+        return IUhidEdgeTransitionHandler::kTop;
+
+    case kBottom:
+        return IUhidEdgeTransitionHandler::kBottom;
+
+    case kNoDirection:
+        break;
+    }
+
+    return IUhidEdgeTransitionHandler::kLeft;
+}
+
+static EDirection
+fromUhidDirection(IUhidEdgeTransitionHandler::Direction dir)
+{
+    switch (dir) {
+    case IUhidEdgeTransitionHandler::kLeft:
+        return kLeft;
+
+    case IUhidEdgeTransitionHandler::kRight:
+        return kRight;
+
+    case IUhidEdgeTransitionHandler::kTop:
+        return kTop;
+
+    case IUhidEdgeTransitionHandler::kBottom:
+        return kBottom;
+    }
+
+    return kNoDirection;
+}
+
 static bool
 getHostLayoutBounds(const etherwaver::layout::ScreenManager& layout,
                     const std::string& hostId,
@@ -352,6 +395,24 @@ matchesScreenOrHostName(const Config& config, const std::string& name)
 }
 
 } // namespace
+
+class Server::UhidTransitionHandler : public IUhidEdgeTransitionHandler {
+public:
+    explicit UhidTransitionHandler(Server* server)
+        : m_server(server)
+    {
+    }
+
+    void onTransition(Direction direction) override
+    {
+        if (m_server != NULL) {
+            m_server->onTransition(direction);
+        }
+    }
+
+private:
+    Server* m_server;
+};
 //
 // Server
 //
@@ -399,11 +460,20 @@ Server::Server(
 	m_activeLayoutScreenId(primaryClient != NULL ? primaryClient->getName() : std::string()),
 	m_httpListener(NULL),
 	m_running(false)
+    , m_uhidTransitionHandler(new UhidTransitionHandler(this))
+    , m_uhidTransitionTriggered(false)
 {
 	// must have a primary client and it must have a canonical name
 	assert(m_primaryClient != NULL);
 	assert(matchesScreenOrHostName(config, primaryClient->getName()));
 	assert(m_screen != NULL);
+
+    UhidEdgeTransitionService::Config uhidConfig;
+    uhidConfig.m_debugLogging = false;
+    uhidConfig.m_enableTopBottom = true;
+    uhidConfig.m_requiredConsecutiveEvents = 4;
+    m_uhidEdgeTransitionService = UhidEdgeTransitionService(uhidConfig);
+    m_uhidEdgeTransitionService.setTransitionHandler(m_uhidTransitionHandler.get());
 
     std::string primaryName = getName(primaryClient);
 
@@ -601,6 +671,58 @@ Server::~Server()
     }
 }
 
+#ifdef BARRIER_TEST_ENV
+Server::Server() :
+    m_mock(true),
+    m_primaryClient(NULL),
+    m_active(NULL),
+    m_seqNum(0),
+    m_x(0),
+    m_y(0),
+    m_xDelta(0),
+    m_yDelta(0),
+    m_xDelta2(0),
+    m_yDelta2(0),
+    m_config(NULL),
+    m_inputFilter(NULL),
+    m_activeSaver(NULL),
+    m_xSaver(0),
+    m_ySaver(0),
+    m_switchDir(kNoDirection),
+    m_switchScreen(NULL),
+    m_switchWaitDelay(0.0),
+    m_switchWaitTimer(NULL),
+    m_switchWaitX(0),
+    m_switchWaitY(0),
+    m_switchTwoTapDelay(0.0),
+    m_switchTwoTapEngaged(false),
+    m_switchTwoTapArmed(false),
+    m_switchTwoTapZone(0),
+    m_switchNeedsShift(false),
+    m_switchNeedsControl(false),
+    m_switchNeedsAlt(false),
+    m_relativeMoves(false),
+    m_keyboardBroadcasting(false),
+    m_lockedToScreen(false),
+    m_screen(NULL),
+    m_events(NULL),
+    m_expectedFileSize(0),
+    m_sendFileThread(NULL),
+    m_writeToDropDirThread(NULL),
+    m_ignoreFileTransfer(false),
+    m_enableClipboard(false),
+    m_sendDragInfoThread(NULL),
+    m_waitDragInfoThread(false),
+    m_clientListener(NULL),
+    m_httpListener(NULL),
+    m_running(false),
+    m_uhidTransitionHandler(),
+    m_uhidEdgeTransitionService(UhidEdgeTransitionService::Config()),
+    m_uhidTransitionTriggered(false)
+{
+}
+#endif
+
 bool
 Server::setConfig(const Config& config)
 {
@@ -633,6 +755,7 @@ Server::setConfig(const Config& config)
 
 	// tell primary screen about reconfiguration
 	reloadScreenLayout();
+    refreshPrimaryUhidGeometry();
 	m_primaryClient->reconfigure(getActivePrimarySides());
 
 	// tell all (connected) clients about current options
@@ -977,6 +1100,8 @@ Server::reloadScreenLayout()
     if (activeScreen != NULL) {
         m_activeLayoutScreenId = activeScreen->m_id;
     }
+
+    refreshPrimaryUhidGeometry();
 }
 
 bool
@@ -993,23 +1118,18 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
     SInt32 ax, ay, aw, ah;
     getClientScreenForCursor(m_active, x, y, ax, ay, aw, ah);
 
-    const std::string sourceHostId = resolveLayoutHostId(m_screenLayout, sourceScreen->m_hostId);
-    int hostMinX = sourceScreen->m_x;
-    int hostMinY = sourceScreen->m_y;
-    int hostMaxX = sourceScreen->m_x + sourceScreen->m_width;
-    int hostMaxY = sourceScreen->m_y + sourceScreen->m_height;
-    if (!getHostLayoutBounds(m_screenLayout, sourceHostId, hostMinX, hostMinY, hostMaxX, hostMaxY)) {
-        hostMinX = sourceScreen->m_x;
-        hostMinY = sourceScreen->m_y;
-        hostMaxX = sourceScreen->m_x + sourceScreen->m_width;
-        hostMaxY = sourceScreen->m_y + sourceScreen->m_height;
-    }
-    const int hostWidth = hostMaxX - hostMinX;
-    const int hostHeight = hostMaxY - hostMinY;
-
+    // Map the cursor from this physical sub-screen's local space into the
+    // layout coordinate space of sourceScreen.
+    //
+    // We map [ax .. ax+aw] → [sourceScreen->m_x .. m_x+m_width] directly.
+    // Using the host-wide span (hostMinX/hostWidth) would be wrong for
+    // multi-monitor hosts: a cursor at the left edge of a right-hand monitor
+    // would map to hostMinX, falsely triggering kLeft.
     EDirection direction = kNoDirection;
-    int globalX = toGlobalCoordinate(x, ax, aw, hostMinX, hostWidth);
-    int globalY = toGlobalCoordinate(y, ay, ah, hostMinY, hostHeight);
+    int globalX = toGlobalCoordinate(x, ax, aw,
+                                     sourceScreen->m_x, sourceScreen->m_width);
+    int globalY = toGlobalCoordinate(y, ay, ah,
+                                     sourceScreen->m_y, sourceScreen->m_height);
     if (x < ax || globalX < sourceScreen->m_x) {
         direction = kLeft;
     }
@@ -1107,6 +1227,74 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
         m_y = targetY;
     }
     return true;
+}
+
+void
+Server::refreshPrimaryUhidGeometry()
+{
+    SInt32 ax = 0;
+    SInt32 ay = 0;
+    SInt32 aw = 0;
+    SInt32 ah = 0;
+    m_primaryClient->getShape(ax, ay, aw, ah);
+    m_uhidEdgeTransitionService.setScreenGeometry(ax, ay, aw, ah);
+}
+
+bool
+Server::trySwitchUsingUhidDirection(IUhidEdgeTransitionHandler::Direction direction)
+{
+    if (!usingObjectLayout() || m_active != m_primaryClient) {
+        return false;
+    }
+
+    SInt32 ax = 0;
+    SInt32 ay = 0;
+    SInt32 aw = 0;
+    SInt32 ah = 0;
+    m_active->getShape(ax, ay, aw, ah);
+    if (aw <= 0 || ah <= 0) {
+        return false;
+    }
+
+    const SInt32 virtualX = m_uhidEdgeTransitionService.virtualX();
+    const SInt32 virtualY = m_uhidEdgeTransitionService.virtualY();
+    SInt32 edgeX = clampInt(virtualX, ax, ax + aw - 1);
+    SInt32 edgeY = clampInt(virtualY, ay, ay + ah - 1);
+
+    switch (direction) {
+    case IUhidEdgeTransitionHandler::kLeft:
+        edgeX = ax - 1;
+        break;
+
+    case IUhidEdgeTransitionHandler::kRight:
+        edgeX = ax + aw;
+        break;
+
+    case IUhidEdgeTransitionHandler::kTop:
+        edgeY = ay - 1;
+        break;
+
+    case IUhidEdgeTransitionHandler::kBottom:
+        edgeY = ay + ah;
+        break;
+    }
+
+    LOG((CLOG_INFO
+        "uhid-edge primary attempt activeHost=%s direction=%s virtualPos=%d,%d edgePos=%d,%d",
+        getName(m_active).c_str(),
+        safeDirectionName(fromUhidDirection(direction)),
+        virtualX,
+        virtualY,
+        edgeX,
+        edgeY));
+
+    return trySwitchUsingObjectLayout(edgeX, edgeY, true);
+}
+
+void
+Server::onTransition(IUhidEdgeTransitionHandler::Direction direction)
+{
+    m_uhidTransitionTriggered = trySwitchUsingUhidDirection(direction);
 }
 
 UInt32
@@ -2626,6 +2814,14 @@ Server::onMouseMovePrimary(SInt32 x, SInt32 y)
 	m_y       = y;
 
 	if (usingObjectLayout()) {
+        refreshPrimaryUhidGeometry();
+        m_uhidEdgeTransitionService.updateSystemCursorSample(x, y);
+        m_uhidTransitionTriggered = false;
+        m_uhidEdgeTransitionService.onRelativeMouseMotion(m_xDelta, m_yDelta);
+        if (m_uhidTransitionTriggered) {
+            return true;
+        }
+
 		SInt32 ax, ay, aw, ah;
 		m_active->getShape(ax, ay, aw, ah);
 		SInt32 zoneSize = std::max<SInt32>(2, getJumpZoneSize(m_active));
@@ -2685,8 +2881,11 @@ Server::onMouseMovePrimary(SInt32 x, SInt32 y)
 
 		if (dirh == kNoDirection && dirv == kNoDirection) {
 			LOG((CLOG_INFO
-				"object-layout primary no-edge activeHost=%s pos=%d,%d hostScreen=%s localScreen=%d,%d..%d,%d desktop=%d,%d %dx%d zone=%d",
-				getName(m_active).c_str(), x, y, sourceScreen->m_id.c_str(),
+				"object-layout primary no-edge activeHost=%s pos=%d,%d sysPos=%d,%d hostScreen=%s localScreen=%d,%d..%d,%d desktop=%d,%d %dx%d zone=%d",
+				getName(m_active).c_str(),
+                m_uhidEdgeTransitionService.virtualX(),
+                m_uhidEdgeTransitionService.virtualY(),
+                x, y, sourceScreen->m_id.c_str(),
 				screenLeft, screenTop, screenRight, screenBottom,
 				ax, ay, aw, ah, zoneSize));
 			noSwitch(x, y);
@@ -2694,8 +2893,11 @@ Server::onMouseMovePrimary(SInt32 x, SInt32 y)
 		}
 
 		LOG((CLOG_INFO
-			"object-layout primary edge activeHost=%s pos=%d,%d zone=%d dirh=%s dirv=%s xh=%d yv=%d",
-			getName(m_active).c_str(), x, y, zoneSize,
+			"object-layout primary edge activeHost=%s pos=%d,%d sysPos=%d,%d zone=%d dirh=%s dirv=%s xh=%d yv=%d",
+			getName(m_active).c_str(),
+            m_uhidEdgeTransitionService.virtualX(),
+            m_uhidEdgeTransitionService.virtualY(),
+            x, y, zoneSize,
 			safeDirectionName(dirh), safeDirectionName(dirv), xh, yv));
 
 		EDirection dirs[] = {dirh, dirv};

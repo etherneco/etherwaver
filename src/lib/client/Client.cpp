@@ -254,8 +254,14 @@ void
 Client::enter(SInt32 xAbs, SInt32 yAbs, UInt32, KeyModifierMask mask, bool)
 {
     m_active = true;
-    m_inputBackend->enter(xAbs, yAbs);
-    m_screen->enter(mask);
+    if (m_inputBackend->managesCursorVisibility()) {
+        m_screen->enter(mask);
+        m_inputBackend->enter(xAbs, yAbs);
+    }
+    else {
+        m_inputBackend->enter(xAbs, yAbs);
+        m_screen->enter(mask);
+    }
 
     if (m_sendFileThread != NULL) {
         StreamChunker::interruptFile();
@@ -268,8 +274,14 @@ Client::leave()
 {
     m_active = false;
 
-    m_inputBackend->leave();
-    m_screen->leave();
+    if (m_inputBackend->managesCursorVisibility()) {
+        m_screen->leave();
+        m_inputBackend->leave();
+    }
+    else {
+        m_inputBackend->leave();
+        m_screen->leave();
+    }
 
     if (m_enableClipboard) {
         // send clipboards that we own and that have changed

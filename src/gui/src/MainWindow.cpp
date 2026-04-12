@@ -109,6 +109,55 @@ QString persistentGuiStatePath()
     return profileDir.filePath("gui-state.ini");
 }
 
+QStringList executableAliases(const QString& name)
+{
+    QStringList names;
+    names << name;
+
+    if (name == "wavers") {
+        names << "barriers" << "waverd" << "barrierd";
+    }
+    else if (name == "wavers.exe") {
+        names << "barriers.exe" << "waverd.exe" << "barrierd.exe";
+    }
+    else if (name == "waverc") {
+        names << "barrierc";
+    }
+    else if (name == "waverc.exe") {
+        names << "barrierc.exe";
+    }
+
+    names.removeDuplicates();
+    return names;
+}
+
+QString resolveExecutablePath(const QString& baseDir, const QString& name)
+{
+    const QDir appDir(baseDir);
+    const QStringList names = executableAliases(name);
+    QStringList searchDirs;
+    searchDirs << appDir.absolutePath();
+    searchDirs << appDir.absoluteFilePath("../bin");
+    searchDirs << appDir.absoluteFilePath("../cmd");
+    searchDirs << appDir.absoluteFilePath("../src/cmd");
+    searchDirs << appDir.absoluteFilePath("../../bin");
+    searchDirs << appDir.absoluteFilePath("../../cmd");
+    searchDirs << appDir.absoluteFilePath("../../src/cmd");
+
+    for (QStringList::const_iterator dirIt = searchDirs.begin(); dirIt != searchDirs.end(); ++dirIt) {
+        const QDir dir(*dirIt);
+        for (QStringList::const_iterator nameIt = names.begin(); nameIt != names.end(); ++nameIt) {
+            const QString candidate = dir.absoluteFilePath(*nameIt);
+            QFileInfo info(candidate);
+            if (info.exists() && info.isFile()) {
+                return info.absoluteFilePath();
+            }
+        }
+    }
+
+    return appDir.absoluteFilePath(name);
+}
+
 }
 
 MainWindow::MainWindow(QSettings& settings, AppConfig& appConfig) :
@@ -757,7 +806,7 @@ QString MainWindow::address()
 
 QString MainWindow::appPath(const QString& name)
 {
-    return appConfig().barrierProgramDir() + name;
+    return resolveExecutablePath(appConfig().barrierProgramDir(), name);
 }
 
 bool MainWindow::serverArgs(QStringList& args, QString& app)

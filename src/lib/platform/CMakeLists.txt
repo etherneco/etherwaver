@@ -25,8 +25,8 @@ elseif (UNIX)
     file(GLOB sources "XWindows*.cpp")
 endif()
 
-list(APPEND headers "UhidServer.h")
-list(APPEND sources "UhidServer.cpp")
+list(APPEND headers "UhidServer.h" "UhidEdgeTransitionService.h")
+list(APPEND sources "UhidServer.cpp" "UhidEdgeTransitionService.cpp")
 
 if (BARRIER_ADD_HEADERS)
     list(APPEND sources ${headers})

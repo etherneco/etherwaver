@@ -33,7 +33,9 @@
 #include "common/stdset.h"
 #include "common/stdvector.h"
 #include "core/layout/ScreenManager.h"
+#include "platform/UhidEdgeTransitionService.h"
 
+#include <memory>
 #include <mutex>
 #include <thread>
 
@@ -115,7 +117,7 @@ public:
     ~Server();
 
 #ifdef BARRIER_TEST_ENV
-    Server() : m_mock(true), m_config(NULL) { }
+    Server();
     void setActive(BaseClientProxy* active) {    m_active = active; }
 #endif
 
@@ -179,6 +181,7 @@ public:
     Returns true iff the switch was executed.
     */
     bool                switchToScreenName(const std::string& screenId);
+    void                onTransition(IUhidEdgeTransitionHandler::Direction direction);
 
     //! Return true if received file size is valid
     bool                isReceivedFileSizeValid();
@@ -313,6 +316,8 @@ private:
                         getLayoutScreenForHost(const std::string& hostId) const;
     BaseClientProxy*    getClientForLayoutScreen(const etherwaver::layout::Screen& screen) const;
     bool                trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion);
+    void                refreshPrimaryUhidGeometry();
+    bool                trySwitchUsingUhidDirection(IUhidEdgeTransitionHandler::Direction direction);
 
     // event handlers
     void                handleShapeChanged(const Event&, void*);
@@ -397,6 +402,8 @@ public:
     bool                m_mock;
 
 private:
+    class UhidTransitionHandler;
+
     class ClipboardInfo {
     public:
         ClipboardInfo();
@@ -514,6 +521,9 @@ private:
     mutable std::mutex  m_mutex;
     std::string         m_currentHost;
     std::string         m_current_ip;
+    std::unique_ptr<UhidTransitionHandler> m_uhidTransitionHandler;
+    UhidEdgeTransitionService m_uhidEdgeTransitionService;
+    bool                m_uhidTransitionTriggered;
 
     void                httpLoop();
 };

@@ -449,7 +449,16 @@ private:
     {
         skipWhitespace();
         if (m_pos >= m_input.size() || m_input[m_pos] != c) {
-            throw std::runtime_error("unexpected JSON token");
+            std::stringstream message;
+            message << "unexpected JSON token at offset " << m_pos
+                    << ": expected '" << c << "'";
+            if (m_pos < m_input.size()) {
+                message << " got '" << m_input[m_pos] << "'";
+            }
+            else {
+                message << " got end of input";
+            }
+            throw std::runtime_error(message.str());
         }
         ++m_pos;
     }
@@ -474,7 +483,7 @@ private:
     }
 
 private:
-    const std::string& m_input;
+    const std::string m_input;
     size_t m_pos;
 };
 

@@ -61,6 +61,14 @@ const etherwaver::layout::Screen* findLayoutScreenForPositionForTest(
     const std::string& hostId,
     SInt32 screenX, SInt32 screenY, SInt32 screenW, SInt32 screenH,
     SInt32 cursorX, SInt32 cursorY);
+const etherwaver::layout::Screen* resolveObjectLayoutDestinationForTest(
+    const etherwaver::layout::ScreenManager& layout,
+    const etherwaver::layout::Screen& sourceScreen,
+    SInt32 sourceScreenX, SInt32 sourceScreenY, SInt32 sourceScreenW, SInt32 sourceScreenH,
+    SInt32 currentScreenX, SInt32 currentScreenY, SInt32 currentScreenW, SInt32 currentScreenH,
+    SInt32 cursorX, SInt32 cursorY,
+    EDirection& direction,
+    int& globalX, int& globalY);
 } // namespace server
 } // namespace etherwaver
 
@@ -135,6 +143,19 @@ public:
 #ifdef BARRIER_TEST_ENV
     Server();
     void setActive(BaseClientProxy* active) {    m_active = active; }
+    void setPrimaryClientForTest(PrimaryClient* client) { m_primaryClient = client; }
+    void setConfigForTest(Config* config) { m_config = config; }
+    void setEventsForTest(IEventQueue* events) { m_events = events; }
+    void setScreenLayoutForTest(const etherwaver::layout::ScreenManager& layout) { m_screenLayout = layout; }
+    void setActiveLayoutScreenIdForTest(const std::string& screenId) { m_activeLayoutScreenId = screenId; }
+    void setCursorPosForTest(SInt32 x, SInt32 y) { m_x = x; m_y = y; }
+    void addClientForTest(const std::string& name, BaseClientProxy* client) { m_clients[name] = client; }
+    BaseClientProxy* getActiveClientForTest() const { return m_active; }
+    const std::string& getActiveLayoutScreenIdForTest() const { return m_activeLayoutScreenId; }
+    const etherwaver::layout::Screen* getActiveLayoutScreenForTest() const { return getActiveLayoutScreen(); }
+    bool trySwitchUsingObjectLayoutForTest(SInt32 x, SInt32 y, bool absoluteMotion) {
+        return trySwitchUsingObjectLayout(x, y, absoluteMotion);
+    }
 #endif
 
     //! @name manipulators

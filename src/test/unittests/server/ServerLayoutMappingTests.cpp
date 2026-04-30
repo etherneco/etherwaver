@@ -10,6 +10,7 @@ namespace {
 using etherwaver::layout::Screen;
 using etherwaver::layout::ScreenManager;
 using etherwaver::server::findLayoutScreenForPositionForTest;
+using etherwaver::server::resolveObjectLayoutDestinationForTest;
 using etherwaver::server::selectClientScreenForLayoutScreenForTest;
 
 TEST(ServerLayoutMappingTests, selectClientScreenForLayoutPrefersGeometryWhenNamesAreSwapped)
@@ -114,6 +115,40 @@ TEST(ServerLayoutMappingTests, remoteHostShouldNotInferLogicalScreenFromCursorPo
     // was explicitly selected during the last transition.
     const std::string rememberedLogicalScreen = "mamre:mamre-2";
     EXPECT_NE(rememberedLogicalScreen, resolved->m_id);
+}
+
+TEST(ServerLayoutMappingTests, resolveObjectLayoutDestinationCanLoseReturnDirectionAfterCrossingIntoAdjacentRemoteMonitor)
+{
+    ScreenManager layout;
+    std::vector<Screen> layoutScreens;
+    layoutScreens.push_back(Screen("mamre:mamre-1", "mamre", "mamre-1",
+                                   0, 0, 100, 100));
+    layoutScreens.back().m_rightLink = "Siloe-1";
+    layoutScreens.push_back(Screen("Siloe:Siloe-1", "Siloe", "Siloe-1",
+                                   100, 0, 100, 100));
+    layoutScreens.back().m_leftLink = "mamre-1";
+    layoutScreens.back().m_rightLink = "mamre-2";
+    layoutScreens.push_back(Screen("mamre:mamre-2", "mamre", "mamre-2",
+                                   200, 0, 100, 100));
+    layoutScreens.back().m_leftLink = "Siloe-1";
+    layout.setScreens(layoutScreens);
+
+    EDirection direction = kNoDirection;
+    int globalX = 0;
+    int globalY = 0;
+
+    const Screen* resolved = resolveObjectLayoutDestinationForTest(
+        layout,
+        layoutScreens[2],   // active logical screen is the remote screen on the right
+        100, 0, 100, 100,   // the physical monitor that corresponds to mamre:mamre-2
+        0, 0, 100, 100,     // but the cursor is already being resolved against the left monitor
+        99, 50,             // just past the left edge of the active monitor
+        direction,
+        globalX, globalY);
+
+    EXPECT_EQ(kNoDirection, direction);
+    ASSERT_NE(static_cast<const Screen*>(NULL), resolved);
+    EXPECT_EQ("mamre:mamre-2", resolved->m_id);
 }
 
 } // namespace

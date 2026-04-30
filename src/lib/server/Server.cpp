@@ -979,6 +979,63 @@ etherwaver::server::findLayoutScreenForPositionForTest(
         layout, hostId, screenX, screenY, screenW, screenH, cursorX, cursorY);
 }
 
+const etherwaver::layout::Screen*
+etherwaver::server::resolveObjectLayoutDestinationForTest(
+    const etherwaver::layout::ScreenManager& layout,
+    const etherwaver::layout::Screen& sourceScreen,
+    SInt32 sourceScreenX, SInt32 sourceScreenY, SInt32 sourceScreenW, SInt32 sourceScreenH,
+    SInt32 currentScreenX, SInt32 currentScreenY, SInt32 currentScreenW, SInt32 currentScreenH,
+    SInt32 cursorX, SInt32 cursorY,
+    EDirection& direction,
+    int& globalX, int& globalY)
+{
+    direction = kNoDirection;
+    globalX = toGlobalCoordinate(cursorX, currentScreenX, currentScreenW,
+                                 sourceScreen.m_x, sourceScreen.m_width);
+    globalY = toGlobalCoordinate(cursorY, currentScreenY, currentScreenH,
+                                 sourceScreen.m_y, sourceScreen.m_height);
+
+    if (cursorX < currentScreenX || globalX < sourceScreen.m_x) {
+        direction = kLeft;
+    }
+    else if (cursorX >= currentScreenX + currentScreenW ||
+             globalX >= sourceScreen.m_x + sourceScreen.m_width) {
+        direction = kRight;
+    }
+    else if (cursorY < currentScreenY || globalY < sourceScreen.m_y) {
+        direction = kTop;
+    }
+    else if (cursorY >= currentScreenY + currentScreenH ||
+             globalY >= sourceScreen.m_y + sourceScreen.m_height) {
+        direction = kBottom;
+    }
+
+    if (direction == kLeft && globalX >= sourceScreen.m_x) {
+        globalX = sourceScreen.m_x - 1;
+    }
+    else if (direction == kRight &&
+             globalX < sourceScreen.m_x + sourceScreen.m_width) {
+        globalX = sourceScreen.m_x + sourceScreen.m_width;
+    }
+    else if (direction == kTop && globalY >= sourceScreen.m_y) {
+        globalY = sourceScreen.m_y - 1;
+    }
+    else if (direction == kBottom &&
+             globalY < sourceScreen.m_y + sourceScreen.m_height) {
+        globalY = sourceScreen.m_y + sourceScreen.m_height;
+    }
+
+    const etherwaver::layout::Screen* destinationScreen =
+        layout.findScreenAt(globalX, globalY);
+    const etherwaver::layout::Screen* resolvedDestination = destinationScreen;
+    if ((resolvedDestination == NULL || resolvedDestination->m_id == sourceScreen.m_id) &&
+        direction != kNoDirection) {
+        resolvedDestination = layout.findScreenInDirection(sourceScreen.m_id, direction);
+    }
+
+    return resolvedDestination;
+}
+
 bool
 Server::setConfig(const Config& config)
 {

@@ -374,15 +374,26 @@ getClientScreenForLayoutScreen(const etherwaver::layout::ScreenManager& layout,
         return screenW > 0 && screenH > 0;
     }
 
+    const ClientScreenInfo* namedScreen = NULL;
+    int validScreenCount = 0;
     for (std::vector<ClientScreenInfo>::const_iterator it = screens.begin();
          it != screens.end(); ++it) {
-        if (it->m_w > 0 && it->m_h > 0 && screenNameMatchesClientScreen(layoutScreen, *it)) {
-            screenX = it->m_x;
-            screenY = it->m_y;
-            screenW = it->m_w;
-            screenH = it->m_h;
-            return true;
+        if (it->m_w <= 0 || it->m_h <= 0) {
+            continue;
         }
+
+        ++validScreenCount;
+        if (namedScreen == NULL && screenNameMatchesClientScreen(layoutScreen, *it)) {
+            namedScreen = &(*it);
+        }
+    }
+
+    if (validScreenCount <= 1 && namedScreen != NULL) {
+        screenX = namedScreen->m_x;
+        screenY = namedScreen->m_y;
+        screenW = namedScreen->m_w;
+        screenH = namedScreen->m_h;
+        return true;
     }
 
     int hostMinX = 0;
@@ -444,6 +455,14 @@ getClientScreenForLayoutScreen(const etherwaver::layout::ScreenManager& layout,
     }
 
     if (bestScreen == NULL) {
+        if (namedScreen != NULL) {
+            screenX = namedScreen->m_x;
+            screenY = namedScreen->m_y;
+            screenW = namedScreen->m_w;
+            screenH = namedScreen->m_h;
+            return true;
+        }
+
         client->getShape(screenX, screenY, screenW, screenH);
         return screenW > 0 && screenH > 0;
     }
@@ -1082,22 +1101,22 @@ Server::getActiveLayoutScreen() const
         return NULL;
     }
 
+    const std::string activeHostId = resolveLayoutHostId(m_screenLayout, getName(m_active));
+    const etherwaver::layout::Screen* screen =
+        m_screenLayout.getScreen(m_activeLayoutScreenId);
+    if (screen != NULL && screen->m_hostId == activeHostId) {
+        return screen;
+    }
+
     SInt32 ax = 0;
     SInt32 ay = 0;
     SInt32 aw = 0;
     SInt32 ah = 0;
     getClientScreenForCursor(m_active, m_x, m_y, ax, ay, aw, ah);
-    const std::string activeHostId = resolveLayoutHostId(m_screenLayout, getName(m_active));
     const etherwaver::layout::Screen* positionScreen =
         findLayoutScreenForPosition(m_screenLayout, activeHostId, ax, ay, aw, ah, m_x, m_y);
     if (positionScreen != NULL) {
         return positionScreen;
-    }
-
-    const etherwaver::layout::Screen* screen =
-        m_screenLayout.getScreen(m_activeLayoutScreenId);
-    if (screen != NULL) {
-        return screen;
     }
 
     return getLayoutScreenForHost(getName(m_active));
@@ -1296,6 +1315,25 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
 
     SInt32 ax, ay, aw, ah;
     getClientScreenForCursor(m_active, x, y, ax, ay, aw, ah);
+
+    // On secondary hosts, only evaluate object-layout transitions after the
+    // cursor has actually left the currently active physical sub-screen.
+    // Otherwise normal movement inside a remote monitor can be misread as a
+    // host/screen transition and trap the pointer between logical screens.
+    if (!absoluteMotion && m_active != m_primaryClient) {
+        SInt32 sourceX = 0;
+        SInt32 sourceY = 0;
+        SInt32 sourceW = 0;
+        SInt32 sourceH = 0;
+        if (getClientScreenForLayoutScreen(
+                m_screenLayout, m_active, *sourceScreen,
+                sourceX, sourceY, sourceW, sourceH) &&
+            sourceW > 0 && sourceH > 0 &&
+            x >= sourceX && x < sourceX + sourceW &&
+            y >= sourceY && y < sourceY + sourceH) {
+            return false;
+        }
+    }
 
     // Map the cursor from this physical sub-screen's local space into the
     // layout coordinate space of sourceScreen.
@@ -1508,6 +1546,14 @@ Server::isRecentReverseSwitch(BaseClientProxy* newScreen, EDirection direction) 
     }
 
     if (m_recentSwitchTimer.getTime() > kRecentReverseSwitchCooldown) {
+        return false;
+    }
+
+    // Keep immediate return to the server responsive. The reverse-switch
+    // cooldown mainly protects against bounce-back right after entering a
+    // remote screen, but applying it to the primary screen makes an
+    // intentional "go back to server" move feel broken.
+    if (newScreen == m_primaryClient) {
         return false;
     }
 

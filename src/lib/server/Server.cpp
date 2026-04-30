@@ -339,6 +339,123 @@ getClientScreenForCursor(const BaseClientProxy* client,
 }
 
 static bool
+screenNameMatchesClientScreen(const etherwaver::layout::Screen& layoutScreen,
+                              const ClientScreenInfo& clientScreen)
+{
+    if (layoutScreen.m_name == clientScreen.m_id ||
+        layoutScreen.m_id == clientScreen.m_id) {
+        return true;
+    }
+
+    const std::string hostPrefix = layoutScreen.m_hostId + ":";
+    if (layoutScreen.m_id.compare(0, hostPrefix.size(), hostPrefix) == 0 &&
+        layoutScreen.m_id.substr(hostPrefix.size()) == clientScreen.m_id) {
+        return true;
+    }
+
+    return false;
+}
+
+static bool
+getClientScreenForLayoutScreen(const etherwaver::layout::ScreenManager& layout,
+                               const BaseClientProxy* client,
+                               const etherwaver::layout::Screen& layoutScreen,
+                               SInt32& screenX, SInt32& screenY,
+                               SInt32& screenW, SInt32& screenH)
+{
+    if (client == NULL) {
+        return false;
+    }
+
+    std::vector<ClientScreenInfo> screens;
+    client->getScreens(screens);
+    if (screens.empty()) {
+        client->getShape(screenX, screenY, screenW, screenH);
+        return screenW > 0 && screenH > 0;
+    }
+
+    for (std::vector<ClientScreenInfo>::const_iterator it = screens.begin();
+         it != screens.end(); ++it) {
+        if (it->m_w > 0 && it->m_h > 0 && screenNameMatchesClientScreen(layoutScreen, *it)) {
+            screenX = it->m_x;
+            screenY = it->m_y;
+            screenW = it->m_w;
+            screenH = it->m_h;
+            return true;
+        }
+    }
+
+    int hostMinX = 0;
+    int hostMinY = 0;
+    int hostMaxX = 0;
+    int hostMaxY = 0;
+    if (!getHostLayoutBounds(layout, layoutScreen.m_hostId,
+                             hostMinX, hostMinY, hostMaxX, hostMaxY)) {
+        client->getShape(screenX, screenY, screenW, screenH);
+        return screenW > 0 && screenH > 0;
+    }
+
+    int clientMinX = screens.front().m_x;
+    int clientMinY = screens.front().m_y;
+    int clientMaxX = screens.front().m_x + screens.front().m_w;
+    int clientMaxY = screens.front().m_y + screens.front().m_h;
+    for (std::vector<ClientScreenInfo>::const_iterator it = screens.begin();
+         it != screens.end(); ++it) {
+        if (it->m_w <= 0 || it->m_h <= 0) {
+            continue;
+        }
+        clientMinX = std::min<int>(clientMinX, it->m_x);
+        clientMinY = std::min<int>(clientMinY, it->m_y);
+        clientMaxX = std::max<int>(clientMaxX, it->m_x + it->m_w);
+        clientMaxY = std::max<int>(clientMaxY, it->m_y + it->m_h);
+    }
+
+    const int clientWidth = std::max<int>(1, clientMaxX - clientMinX);
+    const int clientHeight = std::max<int>(1, clientMaxY - clientMinY);
+    const int hostWidth = std::max<int>(1, hostMaxX - hostMinX);
+    const int hostHeight = std::max<int>(1, hostMaxY - hostMinY);
+    const int targetCenterX = layoutScreen.m_x + layoutScreen.m_width / 2;
+    const int targetCenterY = layoutScreen.m_y + layoutScreen.m_height / 2;
+
+    const ClientScreenInfo* bestScreen = NULL;
+    int bestDistance = 0;
+    bool haveDistance = false;
+    for (std::vector<ClientScreenInfo>::const_iterator it = screens.begin();
+         it != screens.end(); ++it) {
+        if (it->m_w <= 0 || it->m_h <= 0) {
+            continue;
+        }
+
+        const int clientCenterX = it->m_x + it->m_w / 2;
+        const int clientCenterY = it->m_y + it->m_h / 2;
+        const int layoutCenterX =
+            hostMinX + ((clientCenterX - clientMinX) * hostWidth) / clientWidth;
+        const int layoutCenterY =
+            hostMinY + ((clientCenterY - clientMinY) * hostHeight) / clientHeight;
+        const int dx = layoutCenterX - targetCenterX;
+        const int dy = layoutCenterY - targetCenterY;
+        const int distance = dx * dx + dy * dy;
+
+        if (!haveDistance || distance < bestDistance) {
+            bestDistance = distance;
+            bestScreen = &(*it);
+            haveDistance = true;
+        }
+    }
+
+    if (bestScreen == NULL) {
+        client->getShape(screenX, screenY, screenW, screenH);
+        return screenW > 0 && screenH > 0;
+    }
+
+    screenX = bestScreen->m_x;
+    screenY = bestScreen->m_y;
+    screenW = bestScreen->m_w;
+    screenH = bestScreen->m_h;
+    return true;
+}
+
+static bool
 isScreenIndexSuffix(const std::string& name, std::string& baseName)
 {
     const std::string::size_type dash = name.find_last_of('-');
@@ -1257,18 +1374,23 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
 
     SInt32 dx = 0;
     SInt32 dy = 0;
-    destinationClient->getShape(dx, dy, aw, ah);
+    SInt32 dw = 0;
+    SInt32 dh = 0;
+    if (!getClientScreenForLayoutScreen(m_screenLayout, destinationClient,
+                                        *resolvedDestination, dx, dy, dw, dh)) {
+        destinationClient->getShape(dx, dy, dw, dh);
+    }
 
     SInt32 targetX = toClientCoordinate(globalX, resolvedDestination->m_x, resolvedDestination->m_width,
-                                        dx, aw);
+                                        dx, dw);
     SInt32 targetY = toClientCoordinate(globalY, resolvedDestination->m_y, resolvedDestination->m_height,
-                                        dy, ah);
-    targetX = clampInt(targetX, dx, dx + aw - 1);
-    targetY = clampInt(targetY, dy, dy + ah - 1);
-    targetX = clampInt(applyTransitionInset(targetX, dx, dx + aw - 1, direction),
-                       dx, dx + aw - 1);
-    targetY = clampInt(applyTransitionInset(targetY, dy, dy + ah - 1, direction),
-                       dy, dy + ah - 1);
+                                        dy, dh);
+    targetX = clampInt(targetX, dx, dx + dw - 1);
+    targetY = clampInt(targetY, dy, dy + dh - 1);
+    targetX = clampInt(applyTransitionInset(targetX, dx, dx + dw - 1, direction),
+                       dx, dx + dw - 1);
+    targetY = clampInt(applyTransitionInset(targetY, dy, dy + dh - 1, direction),
+                       dy, dy + dh - 1);
 
     if (!isSwitchOkay(destinationClient, direction, targetX, targetY, xActive, yActive)) {
         LOG((CLOG_INFO

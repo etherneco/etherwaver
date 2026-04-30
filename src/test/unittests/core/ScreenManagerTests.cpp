@@ -11,7 +11,11 @@
 #include <map>
 #include <string>
 #include <vector>
+#if defined(_WIN32)
+#include <stdlib.h>
+#else
 #include <unistd.h>
+#endif
 
 namespace {
 
@@ -23,12 +27,21 @@ using etherwaver::layout::ScreenManager;
 std::string
 writeLayoutFile(const std::string& body)
 {
+#if defined(_WIN32)
+    char path[L_tmpnam] = { 0 };
+    errno_t err = tmpnam_s(path, L_tmpnam);
+    EXPECT_EQ(0, err);
+    if (err != 0) {
+        return std::string();
+    }
+#else
     char path[] = "/tmp/etherwaver-layout-test-XXXXXX";
     const int fd = mkstemp(path);
     EXPECT_NE(-1, fd);
     if (fd != -1) {
         close(fd);
     }
+#endif
 
     std::ofstream out(path);
     out << body;

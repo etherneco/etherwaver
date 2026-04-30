@@ -48,6 +48,22 @@ class IEventQueue;
 class Thread;
 class ClientListener;
 
+namespace etherwaver {
+namespace server {
+bool selectClientScreenForLayoutScreenForTest(
+    const etherwaver::layout::ScreenManager& layout,
+    const std::vector<ClientScreenInfo>& screens,
+    const etherwaver::layout::Screen& layoutScreen,
+    SInt32& screenX, SInt32& screenY,
+    SInt32& screenW, SInt32& screenH);
+const etherwaver::layout::Screen* findLayoutScreenForPositionForTest(
+    const etherwaver::layout::ScreenManager& layout,
+    const std::string& hostId,
+    SInt32 screenX, SInt32 screenY, SInt32 screenW, SInt32 screenH,
+    SInt32 cursorX, SInt32 cursorY);
+} // namespace server
+} // namespace etherwaver
+
 //! Barrier server
 /*!
 This class implements the top-level server algorithms for barrier.

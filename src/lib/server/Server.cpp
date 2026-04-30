@@ -357,21 +357,14 @@ screenNameMatchesClientScreen(const etherwaver::layout::Screen& layoutScreen,
 }
 
 static bool
-getClientScreenForLayoutScreen(const etherwaver::layout::ScreenManager& layout,
-                               const BaseClientProxy* client,
-                               const etherwaver::layout::Screen& layoutScreen,
-                               SInt32& screenX, SInt32& screenY,
-                               SInt32& screenW, SInt32& screenH)
+selectClientScreenForLayoutScreen(const etherwaver::layout::ScreenManager& layout,
+                                  const std::vector<ClientScreenInfo>& screens,
+                                  const etherwaver::layout::Screen& layoutScreen,
+                                  SInt32& screenX, SInt32& screenY,
+                                  SInt32& screenW, SInt32& screenH)
 {
-    if (client == NULL) {
-        return false;
-    }
-
-    std::vector<ClientScreenInfo> screens;
-    client->getScreens(screens);
     if (screens.empty()) {
-        client->getShape(screenX, screenY, screenW, screenH);
-        return screenW > 0 && screenH > 0;
+        return false;
     }
 
     const ClientScreenInfo* namedScreen = NULL;
@@ -402,8 +395,26 @@ getClientScreenForLayoutScreen(const etherwaver::layout::ScreenManager& layout,
     int hostMaxY = 0;
     if (!getHostLayoutBounds(layout, layoutScreen.m_hostId,
                              hostMinX, hostMinY, hostMaxX, hostMaxY)) {
-        client->getShape(screenX, screenY, screenW, screenH);
-        return screenW > 0 && screenH > 0;
+        if (namedScreen != NULL) {
+            screenX = namedScreen->m_x;
+            screenY = namedScreen->m_y;
+            screenW = namedScreen->m_w;
+            screenH = namedScreen->m_h;
+            return true;
+        }
+
+        for (std::vector<ClientScreenInfo>::const_iterator it = screens.begin();
+             it != screens.end(); ++it) {
+            if (it->m_w > 0 && it->m_h > 0) {
+                screenX = it->m_x;
+                screenY = it->m_y;
+                screenW = it->m_w;
+                screenH = it->m_h;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     int clientMinX = screens.front().m_x;
@@ -462,9 +473,7 @@ getClientScreenForLayoutScreen(const etherwaver::layout::ScreenManager& layout,
             screenH = namedScreen->m_h;
             return true;
         }
-
-        client->getShape(screenX, screenY, screenW, screenH);
-        return screenW > 0 && screenH > 0;
+        return false;
     }
 
     screenX = bestScreen->m_x;
@@ -472,6 +481,33 @@ getClientScreenForLayoutScreen(const etherwaver::layout::ScreenManager& layout,
     screenW = bestScreen->m_w;
     screenH = bestScreen->m_h;
     return true;
+}
+
+static bool
+getClientScreenForLayoutScreen(const etherwaver::layout::ScreenManager& layout,
+                               const BaseClientProxy* client,
+                               const etherwaver::layout::Screen& layoutScreen,
+                               SInt32& screenX, SInt32& screenY,
+                               SInt32& screenW, SInt32& screenH)
+{
+    if (client == NULL) {
+        return false;
+    }
+
+    std::vector<ClientScreenInfo> screens;
+    client->getScreens(screens);
+    if (screens.empty()) {
+        client->getShape(screenX, screenY, screenW, screenH);
+        return screenW > 0 && screenH > 0;
+    }
+
+    if (selectClientScreenForLayoutScreen(layout, screens, layoutScreen,
+                                          screenX, screenY, screenW, screenH)) {
+        return true;
+    }
+
+    client->getShape(screenX, screenY, screenW, screenH);
+    return screenW > 0 && screenH > 0;
 }
 
 static bool
@@ -921,6 +957,29 @@ Server::Server() :
 #endif
 
 bool
+etherwaver::server::selectClientScreenForLayoutScreenForTest(
+    const etherwaver::layout::ScreenManager& layout,
+    const std::vector<ClientScreenInfo>& screens,
+    const etherwaver::layout::Screen& layoutScreen,
+    SInt32& screenX, SInt32& screenY,
+    SInt32& screenW, SInt32& screenH)
+{
+    return ::selectClientScreenForLayoutScreen(
+        layout, screens, layoutScreen, screenX, screenY, screenW, screenH);
+}
+
+const etherwaver::layout::Screen*
+etherwaver::server::findLayoutScreenForPositionForTest(
+    const etherwaver::layout::ScreenManager& layout,
+    const std::string& hostId,
+    SInt32 screenX, SInt32 screenY, SInt32 screenW, SInt32 screenH,
+    SInt32 cursorX, SInt32 cursorY)
+{
+    return ::findLayoutScreenForPosition(
+        layout, hostId, screenX, screenY, screenW, screenH, cursorX, cursorY);
+}
+
+bool
 Server::setConfig(const Config& config)
 {
 	// refuse configuration if it doesn't include the primary screen
@@ -1106,6 +1165,14 @@ Server::getActiveLayoutScreen() const
         m_screenLayout.getScreen(m_activeLayoutScreenId);
     if (screen != NULL && screen->m_hostId == activeHostId) {
         return screen;
+    }
+
+    // On remote hosts, trust the last logical screen we explicitly switched
+    // to instead of re-deriving it from the cursor position. Reconstructing
+    // from the remote cursor can pick the wrong logical screen when the
+    // client's reported monitor arrangement differs from the object layout.
+    if (m_active != m_primaryClient) {
+        return getLayoutScreenForHost(getName(m_active));
     }
 
     SInt32 ax = 0;

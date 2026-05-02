@@ -95,10 +95,12 @@ private:
 
 class UhidInputBackend : public IInputBackend {
 public:
-    explicit UhidInputBackend(const String& deviceName)
-        : m_started(false)
+    UhidInputBackend(barrier::Screen* screen, const String& deviceName)
+        : m_screen(screen)
+        , m_started(false)
         , m_uhidServer(new UhidServer())
     {
+        assert(m_screen != NULL);
         m_started = m_uhidServer->start(deviceName);
     }
 
@@ -110,6 +112,10 @@ public:
     void enter(SInt32 xAbs, SInt32 yAbs) override
     {
         m_uhidServer->clearInputState();
+        SInt32 currentX = 0;
+        SInt32 currentY = 0;
+        m_screen->getCursorPos(currentX, currentY);
+        m_uhidServer->primeAbsolutePosition(currentX, currentY);
         m_uhidServer->mouseMoveAbsolute(xAbs, yAbs);
     }
 
@@ -164,6 +170,7 @@ public:
     }
 
 private:
+    barrier::Screen* m_screen;
     bool m_started;
     std::unique_ptr<UhidServer> m_uhidServer;
 };
@@ -176,7 +183,7 @@ std::unique_ptr<IInputBackend> createInputBackend(barrier::Screen* screen, const
         return std::unique_ptr<IInputBackend>(new ScreenInputBackend(screen));
     }
 
-    std::unique_ptr<UhidInputBackend> uhidBackend(new UhidInputBackend(args.m_uhidName));
+    std::unique_ptr<UhidInputBackend> uhidBackend(new UhidInputBackend(screen, args.m_uhidName));
     if (uhidBackend->started()) {
         LOG((CLOG_NOTE "uhid: using backend"));
         return std::move(uhidBackend);

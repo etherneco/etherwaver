@@ -21,6 +21,7 @@ public:
     void stop();
     bool running() const;
     void clearInputState();
+    void primeAbsolutePosition(SInt32 x, SInt32 y);
     void setMouseMotionListener(MouseMotionListener* listener);
 
     bool keyDown(KeyID id, KeyModifierMask mask);

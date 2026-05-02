@@ -515,6 +515,13 @@ void UhidServer::clearInputState()
     }
 }
 
+void UhidServer::primeAbsolutePosition(SInt32 x, SInt32 y)
+{
+    m_lastAbsX = x;
+    m_lastAbsY = y;
+    m_hasLastAbsolute = true;
+}
+
 bool UhidServer::sendKeyboardReport()
 {
     if (!m_running) {
@@ -833,6 +840,10 @@ void UhidServer::setMouseMotionListener(MouseMotionListener*)
 }
 
 void UhidServer::clearInputState()
+{
+}
+
+void UhidServer::primeAbsolutePosition(SInt32, SInt32)
 {
 }
 

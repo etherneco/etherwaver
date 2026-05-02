@@ -151,4 +151,38 @@ TEST(ServerLayoutMappingTests, resolveObjectLayoutDestinationCanLoseReturnDirect
     EXPECT_EQ("mamre:mamre-2", resolved->m_id);
 }
 
+TEST(ServerLayoutMappingTests, resolveObjectLayoutDestinationReturnsToPrimaryWhenUsingSourceMonitorGeometry)
+{
+    ScreenManager layout;
+    std::vector<Screen> layoutScreens;
+    layoutScreens.push_back(Screen("mamre:mamre-1", "mamre", "mamre-1",
+                                   0, 0, 100, 100));
+    layoutScreens.back().m_rightLink = "Siloe-1";
+    layoutScreens.push_back(Screen("Siloe:Siloe-1", "Siloe", "Siloe-1",
+                                   100, 0, 100, 100));
+    layoutScreens.back().m_leftLink = "mamre-1";
+    layoutScreens.back().m_rightLink = "mamre-2";
+    layoutScreens.push_back(Screen("mamre:mamre-2", "mamre", "mamre-2",
+                                   200, 0, 100, 100));
+    layoutScreens.back().m_leftLink = "Siloe-1";
+    layout.setScreens(layoutScreens);
+
+    EDirection direction = kNoDirection;
+    int globalX = 0;
+    int globalY = 0;
+
+    const Screen* resolved = resolveObjectLayoutDestinationForTest(
+        layout,
+        layoutScreens[2],   // active logical screen is the right-hand remote screen
+        100, 0, 100, 100,   // source monitor geometry for mamre:mamre-2
+        100, 0, 100, 100,   // use the same source geometry for direction mapping
+        99, 50,             // cursor has just crossed the left edge of mamre:mamre-2
+        direction,
+        globalX, globalY);
+
+    EXPECT_EQ(kLeft, direction);
+    ASSERT_NE(static_cast<const Screen*>(NULL), resolved);
+    EXPECT_EQ("Siloe:Siloe-1", resolved->m_id);
+}
+
 } // namespace

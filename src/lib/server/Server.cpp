@@ -140,6 +140,12 @@ applyTransitionInset(int value, int minValue, int maxValue, EDirection direction
     return value;
 }
 
+static std::string
+layoutScreenDisplayName(const etherwaver::layout::Screen& screen)
+{
+    return !screen.m_name.empty() ? screen.m_name : screen.m_id;
+}
+
 static IUhidEdgeTransitionHandler::Direction
 toUhidDirection(EDirection dir)
 {
@@ -1025,15 +1031,11 @@ etherwaver::server::resolveObjectLayoutDestinationForTest(
         globalY = sourceScreen.m_y + sourceScreen.m_height;
     }
 
-    const etherwaver::layout::Screen* destinationScreen =
-        layout.findScreenAt(globalX, globalY);
-    const etherwaver::layout::Screen* resolvedDestination = destinationScreen;
-    if ((resolvedDestination == NULL || resolvedDestination->m_id == sourceScreen.m_id) &&
-        direction != kNoDirection) {
-        resolvedDestination = layout.findScreenInDirection(sourceScreen.m_id, direction);
+    if (direction == kNoDirection) {
+        return layout.findScreenAt(globalX, globalY);
     }
 
-    return resolvedDestination;
+    return layout.findScreenInDirection(sourceScreen.m_id, direction);
 }
 
 bool
@@ -1295,7 +1297,7 @@ Server::switchToScreenName(const std::string& screenName)
     }
 
     if (usingObjectLayout()) {
-        const etherwaver::layout::Screen* screen = m_screenLayout.getScreen(screenName);
+        const etherwaver::layout::Screen* screen = m_screenLayout.getScreenByIdOrName(screenName);
         if (screen != NULL) {
             BaseClientProxy* client = getClientForLayoutScreen(*screen);
             if (client != NULL) {
@@ -1420,6 +1422,8 @@ Server::reloadScreenLayout()
     }
     if (activeScreen != NULL) {
         m_activeLayoutScreenId = activeScreen->m_id;
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_currentHost = layoutScreenDisplayName(*activeScreen);
     }
 
     refreshPrimaryUhidGeometry();
@@ -1437,8 +1441,25 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
         return false;
     }
 
-    SInt32 ax, ay, aw, ah;
-    getClientScreenForCursor(m_active, x, y, ax, ay, aw, ah);
+    SInt32 ax = 0;
+    SInt32 ay = 0;
+    SInt32 aw = 0;
+    SInt32 ah = 0;
+
+    // On remote hosts, derive the physical source monitor from the active
+    // logical screen, not from whichever monitor currently contains the
+    // cursor. During a return move the cursor can already be on an adjacent
+    // remote monitor before the logical switch is evaluated, which makes the
+    // direction appear reversed (for example "right" instead of "left").
+    if (m_active != m_primaryClient &&
+        getClientScreenForLayoutScreen(m_screenLayout, m_active, *sourceScreen,
+                                       ax, ay, aw, ah) &&
+        aw > 0 && ah > 0) {
+        // use source logical screen geometry
+    }
+    else {
+        getClientScreenForCursor(m_active, x, y, ax, ay, aw, ah);
+    }
 
     // On secondary hosts, only evaluate object-layout transitions after the
     // cursor has actually left the currently active physical sub-screen.
@@ -1501,11 +1522,11 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
         globalY = sourceScreen->m_y + sourceScreen->m_height;
     }
 
-    const etherwaver::layout::Screen* destinationScreen = m_screenLayout.findScreenAt(globalX, globalY);
+    const etherwaver::layout::Screen* destinationScreen =
+        (direction == kNoDirection) ? m_screenLayout.findScreenAt(globalX, globalY) : NULL;
     const etherwaver::layout::Screen* resolvedDestination = destinationScreen;
     const etherwaver::layout::Screen* directionalDestination = NULL;
-    if ((resolvedDestination == NULL || resolvedDestination->m_id == sourceScreen->m_id) &&
-        direction != kNoDirection) {
+    if (direction != kNoDirection) {
         directionalDestination = m_screenLayout.findScreenInDirection(sourceScreen->m_id, direction);
         resolvedDestination = directionalDestination;
     }
@@ -1796,11 +1817,6 @@ Server::switchScreen(BaseClientProxy* dst,
 
 		// cut over
 		m_active = dst;
-		{ 
-			std::lock_guard<std::mutex> lock(m_mutex); 
-			m_currentHost = dst->getName(); 
-			m_current_ip.clear();
-		}
 		if (!layoutScreenId.empty()) {
 			m_activeLayoutScreenId = layoutScreenId;
 		}
@@ -1809,6 +1825,13 @@ Server::switchScreen(BaseClientProxy* dst,
 			if (screen != NULL) {
 				m_activeLayoutScreenId = screen->m_id;
 			}
+		}
+		{
+			std::lock_guard<std::mutex> lock(m_mutex);
+			const etherwaver::layout::Screen* screen =
+				usingObjectLayout() ? m_screenLayout.getScreen(m_activeLayoutScreenId) : NULL;
+			m_currentHost = (screen != NULL) ? layoutScreenDisplayName(*screen) : dst->getName();
+			m_current_ip.clear();
 		}
 
 		// increment enter sequence number
@@ -1833,6 +1856,13 @@ Server::switchScreen(BaseClientProxy* dst,
 	else {
 		if (!layoutScreenId.empty()) {
 			m_activeLayoutScreenId = layoutScreenId;
+		}
+		{
+			std::lock_guard<std::mutex> lock(m_mutex);
+			const etherwaver::layout::Screen* screen =
+				usingObjectLayout() ? m_screenLayout.getScreen(m_activeLayoutScreenId) : NULL;
+			m_currentHost = (screen != NULL) ? layoutScreenDisplayName(*screen) : dst->getName();
+			m_current_ip.clear();
 		}
 		m_active->mouseMove(x, y);
 	}
@@ -3834,6 +3864,8 @@ Server::forceLeaveClient(BaseClientProxy* client)
 			getLayoutScreenForHost(getName(m_primaryClient));
 		if (primaryScreen != NULL) {
 			m_activeLayoutScreenId = primaryScreen->m_id;
+			std::lock_guard<std::mutex> lock(m_mutex);
+			m_currentHost = layoutScreenDisplayName(*primaryScreen);
 		}
 
 		// enter new screen (unless we already have because of the

@@ -51,7 +51,7 @@ writeLayoutFile(const std::string& body)
 
 } // namespace
 
-TEST(ScreenManagerTests, findScreenInDirection_allowsChainAcrossHostsAndMonitors)
+TEST(ScreenManagerTests, findScreenInDirection_requiresExplicitLinks)
 {
     std::vector<Screen> screens;
     screens.push_back(Screen("host1:monitor1", "host1", "monitor1",
@@ -64,22 +64,39 @@ TEST(ScreenManagerTests, findScreenInDirection_allowsChainAcrossHostsAndMonitors
     ScreenManager manager;
     manager.setScreens(screens);
 
+    EXPECT_EQ(static_cast<const Screen*>(NULL),
+              manager.findScreenInDirection("host1:monitor1", kRight));
+    EXPECT_EQ(static_cast<const Screen*>(NULL),
+              manager.findScreenInDirection("host2:monitor1", kRight));
+    EXPECT_EQ(static_cast<const Screen*>(NULL),
+              manager.findScreenInDirection("host1:monitor2", kLeft));
+}
+
+TEST(ScreenManagerTests, findScreenInDirection_followsExplicitLinksAcrossHostsAndMonitors)
+{
+    std::vector<Screen> screens;
+    screens.push_back(Screen("host1:monitor1", "host1", "monitor1",
+                             0, 0, 1920, 1080,
+                             "", "host2:monitor1", "", ""));
+    screens.push_back(Screen("host2:monitor1", "host2", "monitor1",
+                             1920, 0, 1920, 1080,
+                             "host1:monitor1", "host1:monitor2", "", ""));
+    screens.push_back(Screen("host1:monitor2", "host1", "monitor2",
+                             3840, 0, 1920, 1080,
+                             "host2:monitor1", "", "", ""));
+
+    ScreenManager manager;
+    manager.setScreens(screens);
+
     const Screen* host2Monitor1 =
         manager.findScreenInDirection("host1:monitor1", kRight);
     ASSERT_NE(static_cast<const Screen*>(NULL), host2Monitor1);
     EXPECT_EQ("host2:monitor1", host2Monitor1->m_id);
-    EXPECT_EQ("host2", host2Monitor1->m_hostId);
 
     const Screen* host1Monitor2 =
         manager.findScreenInDirection("host2:monitor1", kRight);
     ASSERT_NE(static_cast<const Screen*>(NULL), host1Monitor2);
     EXPECT_EQ("host1:monitor2", host1Monitor2->m_id);
-    EXPECT_EQ("host1", host1Monitor2->m_hostId);
-
-    const Screen* backToHost2 =
-        manager.findScreenInDirection("host1:monitor2", kLeft);
-    ASSERT_NE(static_cast<const Screen*>(NULL), backToHost2);
-    EXPECT_EQ("host2:monitor1", backToHost2->m_id);
 }
 
 TEST(ScreenManagerTests, loadLayout_preservesSavedMonitorLinks)

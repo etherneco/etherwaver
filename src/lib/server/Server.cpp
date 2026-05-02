@@ -1692,21 +1692,13 @@ Server::rememberRecentObjectLayoutSwitch(BaseClientProxy* src,
 bool
 Server::isRecentReverseSwitch(BaseClientProxy* newScreen, EDirection direction) const
 {
-    static const double kRecentReverseSwitchCooldown = 0.35;
+    static const double kRecentReverseSwitchCooldown = 1.0;
 
     if (!m_recentSwitchArmed || m_active == NULL) {
         return false;
     }
 
     if (m_recentSwitchTimer.getTime() > kRecentReverseSwitchCooldown) {
-        return false;
-    }
-
-    // Keep immediate return to the server responsive. The reverse-switch
-    // cooldown mainly protects against bounce-back right after entering a
-    // remote screen, but applying it to the primary screen makes an
-    // intentional "go back to server" move feel broken.
-    if (newScreen == m_primaryClient) {
         return false;
     }
 
@@ -2261,7 +2253,11 @@ Server::isSwitchOkay(BaseClientProxy* newScreen,
 	}
 
     if (isRecentReverseSwitch(newScreen, dir)) {
-        LOG((CLOG_DEBUG1 "blocked recent reverse switch"));
+        LOG((CLOG_INFO
+            "object-layout switch blocked reason=recent-reverse activeHost=%s targetHost=%s direction=%s",
+            getName(m_active).c_str(),
+            getName(newScreen).c_str(),
+            safeDirectionName(dir)));
         return false;
     }
 

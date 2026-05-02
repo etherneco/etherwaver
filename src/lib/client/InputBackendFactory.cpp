@@ -156,6 +156,10 @@ public:
 
     void mouseMove(SInt32 xAbs, SInt32 yAbs) override
     {
+        SInt32 currentX = 0;
+        SInt32 currentY = 0;
+        m_screen->getCursorPos(currentX, currentY);
+        m_uhidServer->primeAbsolutePosition(currentX, currentY);
         m_uhidServer->mouseMoveAbsolute(xAbs, yAbs);
     }
 

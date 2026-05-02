@@ -3248,17 +3248,8 @@ Server::onMouseMovePrimary(SInt32 x, SInt32 y)
 	m_y       = y;
 
 	if (usingObjectLayout()) {
-        refreshPrimaryUhidGeometry();
-        m_uhidEdgeTransitionService.updateSystemCursorSample(x, y);
-        m_uhidTransitionTriggered = false;
-        m_uhidEdgeTransitionService.onRelativeMouseMotion(m_xDelta, m_yDelta);
-        if (m_uhidTransitionTriggered) {
-            return true;
-        }
-
 		SInt32 ax, ay, aw, ah;
 		m_active->getShape(ax, ay, aw, ah);
-		SInt32 zoneSize = std::max<SInt32>(2, getJumpZoneSize(m_active));
 		const etherwaver::layout::Screen* sourceScreen = getActiveLayoutScreen();
 		if (sourceScreen == NULL) {
 			noSwitch(x, y);
@@ -3296,42 +3287,38 @@ Server::onMouseMovePrimary(SInt32 x, SInt32 y)
 
 		EDirection dirh = kNoDirection, dirv = kNoDirection;
 		SInt32 xh = x, yv = y;
-		if (x < screenLeft + zoneSize) {
-			xh  -= zoneSize;
+		if (x <= screenLeft) {
+			xh = screenLeft - 1;
 			dirh = kLeft;
 		}
-		else if (x >= screenRight - zoneSize + 1) {
-			xh  += zoneSize;
+		else if (x >= screenRight) {
+			xh = screenRight + 1;
 			dirh = kRight;
 		}
-		if (y < screenTop + zoneSize) {
-			yv  -= zoneSize;
+		if (y <= screenTop) {
+			yv = screenTop - 1;
 			dirv = kTop;
 		}
-		else if (y >= screenBottom - zoneSize + 1) {
-			yv  += zoneSize;
+		else if (y >= screenBottom) {
+			yv = screenBottom + 1;
 			dirv = kBottom;
 		}
 
 		if (dirh == kNoDirection && dirv == kNoDirection) {
 			LOG((CLOG_INFO
-				"object-layout primary no-edge activeHost=%s pos=%d,%d sysPos=%d,%d hostScreen=%s localScreen=%d,%d..%d,%d desktop=%d,%d %dx%d zone=%d",
+				"object-layout primary no-edge activeHost=%s pos=%d,%d hostScreen=%s localScreen=%d,%d..%d,%d desktop=%d,%d %dx%d",
 				getName(m_active).c_str(),
-                m_uhidEdgeTransitionService.virtualX(),
-                m_uhidEdgeTransitionService.virtualY(),
-                x, y, sourceScreen->m_id.c_str(),
+				x, y, sourceScreen->m_id.c_str(),
 				screenLeft, screenTop, screenRight, screenBottom,
-				ax, ay, aw, ah, zoneSize));
+				ax, ay, aw, ah));
 			noSwitch(x, y);
 			return false;
 		}
 
 		LOG((CLOG_INFO
-			"object-layout primary edge activeHost=%s pos=%d,%d sysPos=%d,%d zone=%d dirh=%s dirv=%s xh=%d yv=%d",
+			"object-layout primary edge activeHost=%s pos=%d,%d dirh=%s dirv=%s xh=%d yv=%d",
 			getName(m_active).c_str(),
-            m_uhidEdgeTransitionService.virtualX(),
-            m_uhidEdgeTransitionService.virtualY(),
-            x, y, zoneSize,
+			x, y,
 			safeDirectionName(dirh), safeDirectionName(dirv), xh, yv));
 
 		EDirection dirs[] = {dirh, dirv};
@@ -3351,6 +3338,18 @@ Server::onMouseMovePrimary(SInt32 x, SInt32 y)
 		LOG((CLOG_INFO
 			"object-layout primary attempts-failed activeHost=%s pos=%d,%d",
 			getName(m_active).c_str(), x, y));
+		const SInt32 clampedX = clampInt(x, screenLeft, screenRight);
+		const SInt32 clampedY = clampInt(y, screenTop, screenBottom);
+		if (clampedX != x || clampedY != y) {
+			m_x = clampedX;
+			m_y = clampedY;
+			LOG((CLOG_DEBUG2 "object-layout primary clamp to \"%s\" at %d,%d",
+				sourceScreen->m_id.c_str(), m_x, m_y));
+			m_active->mouseMove(m_x, m_y);
+		}
+		else {
+			noSwitch(x, y);
+		}
 		return false;
 	}
 

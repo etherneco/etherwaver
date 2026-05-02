@@ -594,6 +594,13 @@ resolveClientHostId(const std::map<std::string, BaseClientProxy*>& clients,
     return resolvedHostId.empty() ? hostId : resolvedHostId;
 }
 
+static std::string
+resolveLayoutHostIdForClient(const etherwaver::layout::ScreenManager& layout,
+                             const BaseClientProxy* client)
+{
+    return resolveLayoutHostId(layout, client != NULL ? client->getName() : std::string());
+}
+
 static const char*
 safeDirectionName(EDirection dir)
 {
@@ -1414,7 +1421,8 @@ Server::reloadScreenLayout()
 
     const etherwaver::layout::Screen* activeScreen =
         m_screenLayout.getScreen(previousActiveScreenId);
-    if (activeScreen != NULL && activeScreen->m_hostId != getName(m_active)) {
+    const std::string activeHostId = resolveLayoutHostIdForClient(m_screenLayout, m_active);
+    if (activeScreen != NULL && activeScreen->m_hostId != activeHostId) {
         activeScreen = NULL;
     }
     if (activeScreen == NULL) {
@@ -1943,7 +1951,8 @@ Server::hasAnyNeighbor(BaseClientProxy* client, EDirection dir) const
 
 	if (usingObjectLayout()) {
 		const etherwaver::layout::Screen* screen = getActiveLayoutScreen();
-		if (screen == NULL || screen->m_hostId != getName(client)) {
+		const std::string clientHostId = resolveLayoutHostIdForClient(m_screenLayout, client);
+		if (screen == NULL || screen->m_hostId != clientHostId) {
 			screen = getLayoutScreenForHost(getName(client));
 		}
 		return (screen != NULL && m_screenLayout.hasAdjacentScreen(screen->m_id, dir));
@@ -1962,7 +1971,8 @@ Server::getNeighbor(BaseClientProxy* src,
 
 	if (usingObjectLayout()) {
 		const etherwaver::layout::Screen* sourceScreen = getActiveLayoutScreen();
-		if (sourceScreen == NULL || sourceScreen->m_hostId != getName(src)) {
+		const std::string sourceHostId = resolveLayoutHostIdForClient(m_screenLayout, src);
+		if (sourceScreen == NULL || sourceScreen->m_hostId != sourceHostId) {
 			sourceScreen = getLayoutScreenForHost(getName(src));
 		}
 		if (sourceScreen == NULL) {
@@ -3518,6 +3528,29 @@ Server::onMouseMoveSecondary(SInt32 dx, SInt32 dy)
 		return;
 	}
 
+	if (usingObjectLayout()) {
+		const etherwaver::layout::Screen* sourceScreen = getActiveLayoutScreen();
+		SInt32 sx = 0;
+		SInt32 sy = 0;
+		SInt32 sw = 0;
+		SInt32 sh = 0;
+		if (sourceScreen != NULL &&
+			getClientScreenForLayoutScreen(m_screenLayout, m_active, *sourceScreen,
+										   sx, sy, sw, sh) &&
+			sw > 0 && sh > 0) {
+			const SInt32 clampedX = clampInt(m_x, sx, sx + sw - 1);
+			const SInt32 clampedY = clampInt(m_y, sy, sy + sh - 1);
+			if (clampedX != m_x || clampedY != m_y) {
+				m_x = clampedX;
+				m_y = clampedY;
+				LOG((CLOG_DEBUG2 "object-layout clamp to \"%s\" at %d,%d",
+					sourceScreen->m_id.c_str(), m_x, m_y));
+				m_active->mouseMove(m_x, m_y);
+			}
+			return;
+		}
+	}
+
 	// get screen shape
 	SInt32 ax, ay, aw, ah;
 	m_active->getShape(ax, ay, aw, ah);
@@ -4191,6 +4224,13 @@ void Server::httpLoop()
                     std::lock_guard<std::mutex> lock(m_mutex);
                     current = m_currentHost;
                     currentIp = m_current_ip;
+                }
+                if (usingObjectLayout()) {
+                    const etherwaver::layout::Screen* activeScreen =
+                        m_screenLayout.getScreen(m_activeLayoutScreenId);
+                    if (activeScreen != NULL) {
+                        current = layoutScreenDisplayName(*activeScreen);
+                    }
                 }
 
                 responseBody = "{\"server\": {\"current\":\"" + current + "\", \"ip\":\"" + currentIp + "\"}}";

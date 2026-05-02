@@ -698,7 +698,7 @@ Server::Server(
 	m_running(false)
     , m_uhidTransitionHandler(new UhidTransitionHandler(this))
     , m_uhidTransitionTriggered(false)
-    , m_recentSwitchTimer(true)
+    , m_recentSwitchTimer(false)
     , m_recentSwitchArmed(false)
     , m_recentSwitchSource(NULL)
     , m_recentSwitchDestination(NULL)
@@ -960,7 +960,7 @@ Server::Server() :
     m_uhidTransitionHandler(),
     m_uhidEdgeTransitionService(UhidEdgeTransitionService::Config()),
     m_uhidTransitionTriggered(false),
-    m_recentSwitchTimer(true),
+    m_recentSwitchTimer(false),
     m_recentSwitchArmed(false),
     m_recentSwitchSource(NULL),
     m_recentSwitchDestination(NULL),
@@ -1686,6 +1686,7 @@ Server::rememberRecentObjectLayoutSwitch(BaseClientProxy* src,
     m_recentSwitchDestination = dst;
     m_recentSwitchDirection = direction;
     m_recentSwitchTimer.reset();
+    m_recentSwitchTimer.start();
     m_recentSwitchArmed = true;
 }
 

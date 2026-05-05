@@ -465,7 +465,8 @@ selectClientScreenForLayoutScreen(const etherwaver::layout::ScreenManager& layou
         const int dy = layoutCenterY - targetCenterY;
         const int distance = dx * dx + dy * dy;
 
-        if (!haveDistance || distance < bestDistance) {
+        if (!haveDistance || distance < bestDistance ||
+            (distance == bestDistance && namedScreen == &(*it))) {
             bestDistance = distance;
             bestScreen = &(*it);
             haveDistance = true;
@@ -1132,6 +1133,56 @@ etherwaver::server::resolveObjectLayoutDestinationForTest(
     }
 
     return layout.findScreenInDirection(sourceScreen.m_id, direction);
+}
+
+const etherwaver::layout::Screen*
+etherwaver::server::resolveObjectLayoutTargetForTest(
+    const etherwaver::layout::ScreenManager& layout,
+    const etherwaver::layout::Screen& sourceScreen,
+    const std::vector<ClientScreenInfo>& destinationClientScreens,
+    SInt32 sourceScreenX, SInt32 sourceScreenY, SInt32 sourceScreenW, SInt32 sourceScreenH,
+    SInt32 cursorX, SInt32 cursorY,
+    EDirection& direction,
+    SInt32& targetX, SInt32& targetY)
+{
+    int globalX = 0;
+    int globalY = 0;
+    const etherwaver::layout::Screen* destinationScreen =
+        resolveObjectLayoutDestinationForTest(
+            layout,
+            sourceScreen,
+            sourceScreenX, sourceScreenY, sourceScreenW, sourceScreenH,
+            sourceScreenX, sourceScreenY, sourceScreenW, sourceScreenH,
+            cursorX, cursorY,
+            direction,
+            globalX, globalY);
+
+    if (destinationScreen == NULL) {
+        return NULL;
+    }
+
+    SInt32 dx = 0;
+    SInt32 dy = 0;
+    SInt32 dw = 0;
+    SInt32 dh = 0;
+    if (!selectClientScreenForLayoutScreen(
+            layout, destinationClientScreens, *destinationScreen,
+            dx, dy, dw, dh)) {
+        return NULL;
+    }
+
+    targetX = toClientCoordinate(globalX, destinationScreen->m_x, destinationScreen->m_width,
+                                 dx, dw);
+    targetY = toClientCoordinate(globalY, destinationScreen->m_y, destinationScreen->m_height,
+                                 dy, dh);
+    targetX = clampInt(targetX, dx, dx + dw - 1);
+    targetY = clampInt(targetY, dy, dy + dh - 1);
+    targetX = clampInt(applyTransitionInset(targetX, dx, dx + dw - 1, direction),
+                       dx, dx + dw - 1);
+    targetY = clampInt(applyTransitionInset(targetY, dy, dy + dh - 1, direction),
+                       dy, dy + dh - 1);
+
+    return destinationScreen;
 }
 
 bool

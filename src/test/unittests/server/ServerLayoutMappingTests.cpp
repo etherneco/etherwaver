@@ -13,6 +13,7 @@ using etherwaver::layout::ScreenManager;
 using etherwaver::server::findLayoutScreenForPositionForTest;
 using etherwaver::server::getJumpCursorPosForLayoutScreenForTest;
 using etherwaver::server::resolveObjectLayoutDestinationForTest;
+using etherwaver::server::resolveObjectLayoutTargetForTest;
 using etherwaver::server::selectClientScreenForLayoutScreenForTest;
 
 class FakeClientProxy : public BaseClientProxy {
@@ -143,14 +144,14 @@ TEST(ServerLayoutMappingTests, jumpPositionForLogicalScreenMovesIntoTargetMonito
     clientScreens.push_back(ClientScreenInfo("mamre-2", 0, 0, 3200, 1800));
 
     FakeClientProxy client("mamre", clientScreens, 0, 0, 5440, 3240);
-    client.setJumpCursorPos(4300, 1200);
+    client.setJumpCursorPos(100, 1200);
 
     SInt32 x = 0;
     SInt32 y = 0;
     getJumpCursorPosForLayoutScreenForTest(layout, &client, layoutScreens[0], x, y);
 
-    EXPECT_EQ(1600, x);
-    EXPECT_EQ(900, y);
+    EXPECT_EQ(4480, x);
+    EXPECT_EQ(1620, y);
 }
 
 TEST(ServerLayoutMappingTests, findLayoutScreenForPositionCanMisidentifyScreenWhenMonitorsAreRemapped)
@@ -263,6 +264,60 @@ TEST(ServerLayoutMappingTests, resolveObjectLayoutDestinationReturnsToPrimaryWhe
     EXPECT_EQ(kLeft, direction);
     ASSERT_NE(static_cast<const Screen*>(NULL), resolved);
     EXPECT_EQ("Siloe:Siloe-1", resolved->m_id);
+}
+
+TEST(ServerLayoutMappingTests, leftEdgeFromSiloeMapsToStackedMamreMonitor)
+{
+    ScreenManager layout;
+    std::vector<Screen> layoutScreens;
+    layoutScreens.push_back(Screen("mamre:mamre-1", "mamre", "mamre-1",
+                                   0, 0, 1920, 1080));
+    layoutScreens.back().m_rightLink = "Siloe-1";
+    layoutScreens.push_back(Screen("Siloe:Siloe-1", "Siloe", "Siloe-1",
+                                   1920, 0, 1920, 1080));
+    layoutScreens.back().m_leftLink = "mamre-1";
+    layoutScreens.back().m_rightLink = "mamre-2";
+    layoutScreens.push_back(Screen("mamre:mamre-2", "mamre", "mamre-2",
+                                   3840, 0, 1920, 1080));
+    layoutScreens.back().m_leftLink = "Siloe-1";
+    layout.setScreens(layoutScreens);
+
+    std::vector<ClientScreenInfo> mamreScreens;
+    mamreScreens.push_back(ClientScreenInfo("mamre-1", 0, 2160, 3840, 2160));
+    mamreScreens.push_back(ClientScreenInfo("mamre-2", 0, 0, 3840, 2160));
+
+    EDirection direction = kNoDirection;
+    SInt32 targetX = 0;
+    SInt32 targetY = 0;
+    const Screen* resolved = resolveObjectLayoutTargetForTest(
+        layout,
+        layoutScreens[1],   // Siloe-1: 0,0 1920x1080 on the server host
+        mamreScreens,
+        0, 0, 1920, 1080,
+        -1, 100,
+        direction,
+        targetX, targetY);
+
+    EXPECT_EQ(kLeft, direction);
+    ASSERT_NE(static_cast<const Screen*>(NULL), resolved);
+    EXPECT_EQ("mamre:mamre-1", resolved->m_id);
+    EXPECT_EQ(3815, targetX);
+    EXPECT_EQ(2360, targetY);
+
+    resolved = resolveObjectLayoutTargetForTest(
+        layout,
+        layoutScreens[1],
+        mamreScreens,
+        0, 0, 1920, 1080,
+        1920, 100,
+        direction,
+        targetX, targetY);
+
+    EXPECT_EQ(kRight, direction);
+    ASSERT_NE(static_cast<const Screen*>(NULL), resolved);
+    EXPECT_EQ("mamre:mamre-2", resolved->m_id);
+    EXPECT_EQ(24, targetX);
+    EXPECT_EQ(200, targetY);
 }
 
 } // namespace

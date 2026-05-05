@@ -75,6 +75,14 @@ const etherwaver::layout::Screen* resolveObjectLayoutDestinationForTest(
     SInt32 cursorX, SInt32 cursorY,
     EDirection& direction,
     int& globalX, int& globalY);
+const etherwaver::layout::Screen* resolveObjectLayoutTargetForTest(
+    const etherwaver::layout::ScreenManager& layout,
+    const etherwaver::layout::Screen& sourceScreen,
+    const std::vector<ClientScreenInfo>& destinationClientScreens,
+    SInt32 sourceScreenX, SInt32 sourceScreenY, SInt32 sourceScreenW, SInt32 sourceScreenH,
+    SInt32 cursorX, SInt32 cursorY,
+    EDirection& direction,
+    SInt32& targetX, SInt32& targetY);
 } // namespace server
 } // namespace etherwaver
 

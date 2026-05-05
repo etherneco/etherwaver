@@ -35,11 +35,13 @@
 
 #include <memory>
 #include <sstream>
+#include <string>
 
 namespace {
 
 std::string
-serializeScreenList(const std::vector<ClientScreenInfo>& screens)
+serializeScreenList(const std::string& clientName,
+                    const std::vector<ClientScreenInfo>& screens)
 {
     std::ostringstream stream;
     for (std::vector<ClientScreenInfo>::const_iterator it = screens.begin();
@@ -47,7 +49,12 @@ serializeScreenList(const std::vector<ClientScreenInfo>& screens)
         if (it != screens.begin()) {
             stream << '\n';
         }
-        stream << it->m_id << ','
+        const std::size_t screenIndex = static_cast<std::size_t>(it - screens.begin()) + 1;
+        const std::string screenId =
+            screens.size() > 1 && !clientName.empty() ?
+                (clientName + "-" + std::to_string(screenIndex)) :
+                it->m_id;
+        stream << screenId << ','
                << it->m_x << ','
                << it->m_y << ','
                << it->m_w << ','
@@ -427,7 +434,7 @@ ServerProxy::sendInfo(const ClientInfo& info)
 
     std::vector<ClientScreenInfo> screens;
     m_client->getScreens(screens);
-    const std::string serializedScreens = serializeScreenList(screens);
+    const std::string serializedScreens = serializeScreenList(m_client->getName(), screens);
     ProtocolUtil::writef(m_stream, kMsgDScreenList, &serializedScreens);
 }
 

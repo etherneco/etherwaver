@@ -112,11 +112,8 @@ public:
     void enter(SInt32 xAbs, SInt32 yAbs) override
     {
         m_uhidServer->clearInputState();
-        SInt32 currentX = 0;
-        SInt32 currentY = 0;
-        m_screen->getCursorPos(currentX, currentY);
-        m_uhidServer->primeAbsolutePosition(currentX, currentY);
-        m_uhidServer->mouseMoveAbsolute(xAbs, yAbs);
+        LOG((CLOG_INFO "uhid: enter cursor via screen backend at %d,%d", xAbs, yAbs));
+        m_screen->mouseMove(xAbs, yAbs);
     }
 
     void leave() override
@@ -156,7 +153,8 @@ public:
 
     void mouseMove(SInt32 xAbs, SInt32 yAbs) override
     {
-        m_uhidServer->mouseMoveAbsolute(xAbs, yAbs);
+        LOG((CLOG_DEBUG1 "uhid: move cursor via screen backend to %d,%d", xAbs, yAbs));
+        m_screen->mouseMove(xAbs, yAbs);
     }
 
     void mouseRelativeMove(SInt32 dx, SInt32 dy) override

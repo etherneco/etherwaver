@@ -49,6 +49,7 @@
 #include "arch/IArchNetwork.h"
 
 #include <cstring>
+#include <cstdio>
 #include <string>
 #include <typeinfo>
 #include <cstdlib>
@@ -516,6 +517,33 @@ getClientScreenForLayoutScreen(const etherwaver::layout::ScreenManager& layout,
     return screenW > 0 && screenH > 0;
 }
 
+static void
+getJumpCursorPosForLayoutScreen(const etherwaver::layout::ScreenManager& layout,
+                                const BaseClientProxy* client,
+                                const etherwaver::layout::Screen& layoutScreen,
+                                SInt32& x,
+                                SInt32& y)
+{
+    client->getJumpCursorPos(x, y);
+
+    SInt32 screenX = 0;
+    SInt32 screenY = 0;
+    SInt32 screenW = 0;
+    SInt32 screenH = 0;
+    if (!getClientScreenForLayoutScreen(layout, client, layoutScreen,
+                                        screenX, screenY, screenW, screenH)) {
+        return;
+    }
+
+    if (x >= screenX && x < screenX + screenW &&
+        y >= screenY && y < screenY + screenH) {
+        return;
+    }
+
+    x = screenX + screenW / 2;
+    y = screenY + screenH / 2;
+}
+
 static bool
 isScreenIndexSuffix(const std::string& name, std::string& baseName)
 {
@@ -605,6 +633,51 @@ static const char*
 safeDirectionName(EDirection dir)
 {
     return (dir == kNoDirection) ? "none" : Config::dirName(dir);
+}
+
+static std::string
+objectLayoutDebugLogPath()
+{
+#if SYSAPI_WIN32
+    char modulePath[MAX_PATH] = {0};
+    const DWORD length = GetModuleFileNameA(NULL, modulePath, MAX_PATH);
+    if (length > 0 && length < MAX_PATH) {
+        const std::string path(modulePath, length);
+        const std::string::size_type slash = path.find_last_of("/\\");
+        if (slash != std::string::npos) {
+            return path.substr(0, slash + 1) + "debug.logs.txt";
+        }
+    }
+#endif
+
+    return "debug.logs.txt";
+}
+
+static void
+appendObjectLayoutDebugLog(const std::string& message)
+{
+    static std::mutex s_debugLogMutex;
+    std::lock_guard<std::mutex> lock(s_debugLogMutex);
+
+    std::ofstream output(objectLayoutDebugLogPath().c_str(), std::ios::app);
+    if (!output.is_open() || output.fail()) {
+        return;
+    }
+
+    char timestamp[64] = {0};
+    time_t now;
+    time(&now);
+    struct tm* tm = localtime(&now);
+    if (tm != NULL) {
+        sprintf(timestamp, "%04i-%02i-%02iT%02i:%02i:%02i",
+                tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
+                tm->tm_hour, tm->tm_min, tm->tm_sec);
+    }
+    else {
+        strcpy(timestamp, "unknown-time");
+    }
+
+    output << "[" << timestamp << "] " << message << std::endl;
 }
 
 static std::string
@@ -702,6 +775,8 @@ Server::Server(
     , m_recentSwitchArmed(false)
     , m_recentSwitchSource(NULL)
     , m_recentSwitchDestination(NULL)
+    , m_recentSwitchSourceLayoutScreenId()
+    , m_recentSwitchDestinationLayoutScreenId()
     , m_recentSwitchDirection(kNoDirection)
 {
 	// must have a primary client and it must have a canonical name
@@ -715,6 +790,7 @@ Server::Server(
     uhidConfig.m_requiredConsecutiveEvents = 4;
     m_uhidEdgeTransitionService = UhidEdgeTransitionService(uhidConfig);
     m_uhidEdgeTransitionService.setTransitionHandler(m_uhidTransitionHandler.get());
+    appendObjectLayoutDebugLog("server-start object-layout-debug=enabled recentReverseCooldownMs=250");
 
     std::string primaryName = getName(primaryClient);
 
@@ -964,6 +1040,8 @@ Server::Server() :
     m_recentSwitchArmed(false),
     m_recentSwitchSource(NULL),
     m_recentSwitchDestination(NULL),
+    m_recentSwitchSourceLayoutScreenId(),
+    m_recentSwitchDestinationLayoutScreenId(),
     m_recentSwitchDirection(kNoDirection)
 {
 }
@@ -979,6 +1057,17 @@ etherwaver::server::selectClientScreenForLayoutScreenForTest(
 {
     return ::selectClientScreenForLayoutScreen(
         layout, screens, layoutScreen, screenX, screenY, screenW, screenH);
+}
+
+void
+etherwaver::server::getJumpCursorPosForLayoutScreenForTest(
+    const etherwaver::layout::ScreenManager& layout,
+    const BaseClientProxy* client,
+    const etherwaver::layout::Screen& layoutScreen,
+    SInt32& x,
+    SInt32& y)
+{
+    ::getJumpCursorPosForLayoutScreen(layout, client, layoutScreen, x, y);
 }
 
 const etherwaver::layout::Screen*
@@ -1310,7 +1399,7 @@ Server::switchToScreenName(const std::string& screenName)
             if (client != NULL) {
                 SInt32 x = 0;
                 SInt32 y = 0;
-                client->getJumpCursorPos(x, y);
+                getJumpCursorPosForLayoutScreen(m_screenLayout, client, *screen, x, y);
                 switchScreen(client, x, y, false, screen->m_id);
                 return true;
             }
@@ -1443,6 +1532,14 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
     BaseClientProxy* const sourceClient = m_active;
     const etherwaver::layout::Screen* sourceScreen = getActiveLayoutScreen();
     if (sourceScreen == NULL) {
+        std::ostringstream debug;
+        debug << "switch-aborted reason=no-source-screen"
+              << " activeClient=" << (m_active != NULL ? getName(m_active) : "<none>")
+              << " activeLayout=" << m_activeLayoutScreenId
+              << " x=" << x
+              << " y=" << y
+              << " absolute=" << (absoluteMotion ? "yes" : "no");
+        appendObjectLayoutDebugLog(debug.str());
         LOG((CLOG_INFO
             "object-layout switch aborted activeHost=%s reason=no-source-screen x=%d y=%d absolute=%s",
             getName(m_active).c_str(), x, y, absoluteMotion ? "yes" : "no"));
@@ -1540,6 +1637,19 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
     }
 
     if (resolvedDestination == NULL || resolvedDestination->m_id == sourceScreen->m_id) {
+        std::ostringstream debug;
+        debug << "switch-rejected reason=no-valid-destination"
+              << " activeClient=" << getName(m_active)
+              << " activeLayout=" << m_activeLayoutScreenId
+              << " sourceScreen=" << sourceScreen->m_id
+              << " direction=" << safeDirectionName(direction)
+              << " local=" << x << "," << y
+              << " localScreen=" << ax << "," << ay << " " << aw << "x" << ah
+              << " global=" << globalX << "," << globalY
+              << " directDestination=" << (destinationScreen != NULL ? destinationScreen->m_id : "<none>")
+              << " directionalDestination=" << (directionalDestination != NULL ? directionalDestination->m_id : "<none>")
+              << " resolvedDestination=" << (resolvedDestination != NULL ? resolvedDestination->m_id : "<none>");
+        appendObjectLayoutDebugLog(debug.str());
         LOG((CLOG_INFO
             "object-layout switch rejected sourceScreen=%s direction=%s directDestination=%s directionalDestination=%s resolvedDestination=%s reason=no-valid-destination",
             sourceScreen->m_id.c_str(),
@@ -1553,6 +1663,17 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
 
     BaseClientProxy* destinationClient = getClientForLayoutScreen(*resolvedDestination);
     if (destinationClient == NULL) {
+        std::ostringstream debug;
+        debug << "switch-rejected reason=no-destination-client"
+              << " activeClient=" << getName(m_active)
+              << " activeLayout=" << m_activeLayoutScreenId
+              << " sourceScreen=" << sourceScreen->m_id
+              << " destinationScreen=" << resolvedDestination->m_id
+              << " direction=" << safeDirectionName(direction)
+              << " local=" << x << "," << y
+              << " localScreen=" << ax << "," << ay << " " << aw << "x" << ah
+              << " global=" << globalX << "," << globalY;
+        appendObjectLayoutDebugLog(debug.str());
         LOG((CLOG_INFO
             "object-layout switch rejected sourceScreen=%s resolvedDestination=%s reason=no-destination-client",
             sourceScreen->m_id.c_str(),
@@ -1583,7 +1704,27 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
     targetY = clampInt(applyTransitionInset(targetY, dy, dy + dh - 1, direction),
                        dy, dy + dh - 1);
 
-    if (!isSwitchOkay(destinationClient, direction, targetX, targetY, xActive, yActive)) {
+    if (!isSwitchOkay(destinationClient, direction, targetX, targetY,
+                      xActive, yActive, resolvedDestination->m_id)) {
+        std::ostringstream debug;
+        debug << "switch-blocked"
+              << " activeClient=" << getName(m_active)
+              << " activeLayout=" << m_activeLayoutScreenId
+              << " sourceClient=" << getName(sourceClient)
+              << " sourceScreen=" << sourceScreen->m_id
+              << " destinationClient=" << getName(destinationClient)
+              << " destinationScreen=" << resolvedDestination->m_id
+              << " direction=" << safeDirectionName(direction)
+              << " local=" << x << "," << y
+              << " localScreen=" << ax << "," << ay << " " << aw << "x" << ah
+              << " global=" << globalX << "," << globalY
+              << " destinationScreenRect=" << dx << "," << dy << " " << dw << "x" << dh
+              << " target=" << targetX << "," << targetY
+              << " recentArmed=" << (m_recentSwitchArmed ? "yes" : "no")
+              << " recentElapsedMs=" << static_cast<int>(m_recentSwitchTimer.getTime() * 1000.0)
+              << " recentSourceScreen=" << (m_recentSwitchSourceLayoutScreenId.empty() ? "<none>" : m_recentSwitchSourceLayoutScreenId)
+              << " recentDestinationScreen=" << (m_recentSwitchDestinationLayoutScreenId.empty() ? "<none>" : m_recentSwitchDestinationLayoutScreenId);
+        appendObjectLayoutDebugLog(debug.str());
         LOG((CLOG_INFO
             "object-layout switch blocked sourceScreen=%s destination=%s client=%s target=%d,%d",
             sourceScreen->m_id.c_str(),
@@ -1599,8 +1740,27 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
         resolvedDestination->m_id.c_str(),
         getName(destinationClient).c_str(),
         targetX, targetY));
+    {
+        std::ostringstream debug;
+        debug << "switch-accepted"
+              << " activeClient=" << getName(m_active)
+              << " activeLayout=" << m_activeLayoutScreenId
+              << " sourceClient=" << getName(sourceClient)
+              << " sourceScreen=" << sourceScreen->m_id
+              << " destinationClient=" << getName(destinationClient)
+              << " destinationScreen=" << resolvedDestination->m_id
+              << " direction=" << safeDirectionName(direction)
+              << " local=" << x << "," << y
+              << " localScreen=" << ax << "," << ay << " " << aw << "x" << ah
+              << " global=" << globalX << "," << globalY
+              << " destinationScreenRect=" << dx << "," << dy << " " << dw << "x" << dh
+              << " target=" << targetX << "," << targetY;
+        appendObjectLayoutDebugLog(debug.str());
+    }
 
-    rememberRecentObjectLayoutSwitch(sourceClient, destinationClient, direction);
+    rememberRecentObjectLayoutSwitch(sourceClient, sourceScreen->m_id,
+                                     destinationClient, resolvedDestination->m_id,
+                                     direction);
     switchScreen(destinationClient, targetX, targetY, false, resolvedDestination->m_id);
     if (!absoluteMotion) {
         m_x = targetX;
@@ -1679,11 +1839,15 @@ Server::onTransition(IUhidEdgeTransitionHandler::Direction direction)
 
 void
 Server::rememberRecentObjectLayoutSwitch(BaseClientProxy* src,
+                                         const std::string& srcLayoutScreenId,
                                          BaseClientProxy* dst,
+                                         const std::string& dstLayoutScreenId,
                                          EDirection direction)
 {
     m_recentSwitchSource = src;
     m_recentSwitchDestination = dst;
+    m_recentSwitchSourceLayoutScreenId = srcLayoutScreenId;
+    m_recentSwitchDestinationLayoutScreenId = dstLayoutScreenId;
     m_recentSwitchDirection = direction;
     m_recentSwitchTimer.reset();
     m_recentSwitchTimer.start();
@@ -1691,9 +1855,13 @@ Server::rememberRecentObjectLayoutSwitch(BaseClientProxy* src,
 }
 
 bool
-Server::isRecentReverseSwitch(BaseClientProxy* newScreen, EDirection direction) const
+Server::isRecentReverseSwitch(BaseClientProxy* newScreen,
+                              EDirection direction,
+                              const std::string& layoutScreenId) const
 {
-    static const double kRecentReverseSwitchCooldown = 1.0;
+    // This only absorbs duplicate edge events from the transition itself.
+    // Real user movement at the next edge should be evaluated again quickly.
+    static const double kRecentReverseSwitchCooldown = 0.25;
 
     if (!m_recentSwitchArmed || m_active == NULL) {
         return false;
@@ -1703,7 +1871,13 @@ Server::isRecentReverseSwitch(BaseClientProxy* newScreen, EDirection direction) 
         return false;
     }
 
-    return (m_active == m_recentSwitchDestination &&
+    const bool layoutScreensMatch =
+        !layoutScreenId.empty() &&
+        m_activeLayoutScreenId == m_recentSwitchDestinationLayoutScreenId &&
+        layoutScreenId == m_recentSwitchSourceLayoutScreenId;
+
+    return (layoutScreensMatch &&
+            m_active == m_recentSwitchDestination &&
             newScreen == m_recentSwitchSource &&
             direction == oppositeDirection(m_recentSwitchDirection));
 }
@@ -2240,7 +2414,8 @@ Server::avoidJumpZone(BaseClientProxy* dst,
 bool
 Server::isSwitchOkay(BaseClientProxy* newScreen,
 				EDirection dir, SInt32 x, SInt32 y,
-				SInt32 xActive, SInt32 yActive)
+				SInt32 xActive, SInt32 yActive,
+                const std::string& layoutScreenId)
 {
 	LOG((CLOG_DEBUG1 "try to leave \"%s\" on %s", getName(m_active).c_str(), Config::dirName(dir)));
 
@@ -2253,12 +2428,28 @@ Server::isSwitchOkay(BaseClientProxy* newScreen,
 		return false;
 	}
 
-    if (isRecentReverseSwitch(newScreen, dir)) {
+    if (isRecentReverseSwitch(newScreen, dir, layoutScreenId)) {
         LOG((CLOG_INFO
-            "object-layout switch blocked reason=recent-reverse activeHost=%s targetHost=%s direction=%s",
+            "object-layout switch blocked reason=recent-reverse activeHost=%s activeScreen=%s targetHost=%s targetScreen=%s direction=%s elapsedMs=%d",
             getName(m_active).c_str(),
+            m_activeLayoutScreenId.c_str(),
             getName(newScreen).c_str(),
-            safeDirectionName(dir)));
+            layoutScreenId.empty() ? "<none>" : layoutScreenId.c_str(),
+            safeDirectionName(dir),
+            static_cast<int>(m_recentSwitchTimer.getTime() * 1000.0)));
+        std::ostringstream debug;
+        debug << "switch-blocked reason=recent-reverse"
+              << " activeClient=" << getName(m_active)
+              << " activeLayout=" << m_activeLayoutScreenId
+              << " targetClient=" << getName(newScreen)
+              << " targetScreen=" << (layoutScreenId.empty() ? "<none>" : layoutScreenId)
+              << " direction=" << safeDirectionName(dir)
+              << " elapsedMs=" << static_cast<int>(m_recentSwitchTimer.getTime() * 1000.0)
+              << " recentSourceClient=" << (m_recentSwitchSource != NULL ? getName(m_recentSwitchSource) : "<none>")
+              << " recentSourceScreen=" << (m_recentSwitchSourceLayoutScreenId.empty() ? "<none>" : m_recentSwitchSourceLayoutScreenId)
+              << " recentDestinationClient=" << (m_recentSwitchDestination != NULL ? getName(m_recentSwitchDestination) : "<none>")
+              << " recentDestinationScreen=" << (m_recentSwitchDestinationLayoutScreenId.empty() ? "<none>" : m_recentSwitchDestinationLayoutScreenId);
+        appendObjectLayoutDebugLog(debug.str());
         return false;
     }
 
@@ -2874,7 +3065,7 @@ Server::handleToggleScreenEvent(const Event& event, void*)
       if (client != NULL) {
         SInt32 x = 0;
         SInt32 y = 0;
-        client->getJumpCursorPos(x, y);
+        getJumpCursorPosForLayoutScreen(m_screenLayout, client, *next, x, y);
         switchScreen(client, x, y, false, next->m_id);
       }
     }
@@ -2912,7 +3103,7 @@ Server::handleSwitchInDirectionEvent(const Event& event, void*)
 				if (client != NULL) {
 					SInt32 x = 0;
 					SInt32 y = 0;
-					client->getJumpCursorPos(x, y);
+					getJumpCursorPosForLayoutScreen(m_screenLayout, client, *next, x, y);
 					switchScreen(client, x, y, false, next->m_id);
 				}
 			}
@@ -3338,6 +3529,16 @@ Server::onMouseMovePrimary(SInt32 x, SInt32 y)
 		const SInt32 clampedX = clampInt(x, screenLeft, screenRight);
 		const SInt32 clampedY = clampInt(y, screenTop, screenBottom);
 		if (clampedX != x || clampedY != y) {
+			std::ostringstream debug;
+			debug << "primary-clamp"
+				  << " activeClient=" << getName(m_active)
+				  << " activeLayout=" << m_activeLayoutScreenId
+				  << " sourceScreen=" << sourceScreen->m_id
+				  << " requested=" << x << "," << y
+				  << " clamped=" << clampedX << "," << clampedY
+				  << " localScreen=" << screenLeft << "," << screenTop
+				  << ".." << screenRight << "," << screenBottom;
+			appendObjectLayoutDebugLog(debug.str());
 			m_x = clampedX;
 			m_y = clampedY;
 			LOG((CLOG_DEBUG2 "object-layout primary clamp to \"%s\" at %d,%d",
@@ -3537,6 +3738,16 @@ Server::onMouseMoveSecondary(SInt32 dx, SInt32 dy)
 			const SInt32 clampedX = clampInt(m_x, sx, sx + sw - 1);
 			const SInt32 clampedY = clampInt(m_y, sy, sy + sh - 1);
 			if (clampedX != m_x || clampedY != m_y) {
+				std::ostringstream debug;
+				debug << "secondary-clamp"
+					  << " activeClient=" << getName(m_active)
+					  << " activeLayout=" << m_activeLayoutScreenId
+					  << " sourceScreen=" << sourceScreen->m_id
+					  << " delta=" << dx << "," << dy
+					  << " requested=" << m_x << "," << m_y
+					  << " clamped=" << clampedX << "," << clampedY
+					  << " physicalScreen=" << sx << "," << sy << " " << sw << "x" << sh;
+				appendObjectLayoutDebugLog(debug.str());
 				m_x = clampedX;
 				m_y = clampedY;
 				LOG((CLOG_DEBUG2 "object-layout clamp to \"%s\" at %d,%d",

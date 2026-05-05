@@ -1,6 +1,7 @@
 #define BARRIER_TEST_ENV
 
 #include "server/Server.h"
+#include "server/BaseClientProxy.h"
 #include "core/layout/ScreenManager.h"
 
 #include "test/global/gtest.h"
@@ -10,8 +11,62 @@ namespace {
 using etherwaver::layout::Screen;
 using etherwaver::layout::ScreenManager;
 using etherwaver::server::findLayoutScreenForPositionForTest;
+using etherwaver::server::getJumpCursorPosForLayoutScreenForTest;
 using etherwaver::server::resolveObjectLayoutDestinationForTest;
 using etherwaver::server::selectClientScreenForLayoutScreenForTest;
+
+class FakeClientProxy : public BaseClientProxy {
+public:
+    FakeClientProxy(const std::string& name,
+                    const std::vector<ClientScreenInfo>& screens,
+                    SInt32 x, SInt32 y, SInt32 w, SInt32 h)
+        : BaseClientProxy(name)
+        , m_screens(screens)
+        , m_x(x)
+        , m_y(y)
+        , m_w(w)
+        , m_h(h)
+    {
+    }
+
+    void* getEventTarget() const { return NULL; }
+    bool getClipboard(ClipboardID, IClipboard*) const { return false; }
+    void getShape(SInt32& x, SInt32& y, SInt32& w, SInt32& h) const
+    {
+        x = m_x;
+        y = m_y;
+        w = m_w;
+        h = m_h;
+    }
+    void getScreens(std::vector<ClientScreenInfo>& screens) const { screens = m_screens; }
+    void getCursorPos(SInt32& x, SInt32& y) const { x = m_x; y = m_y; }
+    void enter(SInt32, SInt32, UInt32, KeyModifierMask, bool) {}
+    bool leave() { return true; }
+    void setClipboard(ClipboardID, const IClipboard*) {}
+    void grabClipboard(ClipboardID) {}
+    void setClipboardDirty(ClipboardID, bool) {}
+    void keyDown(KeyID, KeyModifierMask, KeyButton) {}
+    void keyRepeat(KeyID, KeyModifierMask, SInt32, KeyButton) {}
+    void keyUp(KeyID, KeyModifierMask, KeyButton) {}
+    void mouseDown(ButtonID) {}
+    void mouseUp(ButtonID) {}
+    void mouseMove(SInt32, SInt32) {}
+    void mouseRelativeMove(SInt32, SInt32) {}
+    void mouseWheel(SInt32, SInt32) {}
+    void screensaver(bool) {}
+    void resetOptions() {}
+    void setOptions(const OptionsList&) {}
+    void sendDragInfo(UInt32, const char*, size_t) {}
+    void fileChunkSending(UInt8, char*, size_t) {}
+    barrier::IStream* getStream() const { return NULL; }
+
+private:
+    std::vector<ClientScreenInfo> m_screens;
+    SInt32 m_x;
+    SInt32 m_y;
+    SInt32 m_w;
+    SInt32 m_h;
+};
 
 TEST(ServerLayoutMappingTests, selectClientScreenForLayoutPrefersGeometryWhenNamesAreSwapped)
 {
@@ -71,6 +126,31 @@ TEST(ServerLayoutMappingTests, selectClientScreenForLayoutUsesNameWhenOnlyOneScr
     EXPECT_EQ(0, y);
     EXPECT_EQ(3200, w);
     EXPECT_EQ(1800, h);
+}
+
+TEST(ServerLayoutMappingTests, jumpPositionForLogicalScreenMovesIntoTargetMonitorWhenSavedPositionIsOnAnotherMonitor)
+{
+    ScreenManager layout;
+    std::vector<Screen> layoutScreens;
+    layoutScreens.push_back(Screen("mamre:mamre-2", "mamre", "mamre-2",
+                                   518, 42, 240, 140));
+    layoutScreens.push_back(Screen("mamre:mamre-1", "mamre", "mamre-1",
+                                   62, 57, 240, 140));
+    layout.setScreens(layoutScreens);
+
+    std::vector<ClientScreenInfo> clientScreens;
+    clientScreens.push_back(ClientScreenInfo("mamre-1", 3520, 0, 1920, 3240));
+    clientScreens.push_back(ClientScreenInfo("mamre-2", 0, 0, 3200, 1800));
+
+    FakeClientProxy client("mamre", clientScreens, 0, 0, 5440, 3240);
+    client.setJumpCursorPos(4300, 1200);
+
+    SInt32 x = 0;
+    SInt32 y = 0;
+    getJumpCursorPosForLayoutScreenForTest(layout, &client, layoutScreens[0], x, y);
+
+    EXPECT_EQ(1600, x);
+    EXPECT_EQ(900, y);
 }
 
 TEST(ServerLayoutMappingTests, findLayoutScreenForPositionCanMisidentifyScreenWhenMonitorsAreRemapped)

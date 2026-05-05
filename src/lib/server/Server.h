@@ -56,6 +56,12 @@ bool selectClientScreenForLayoutScreenForTest(
     const etherwaver::layout::Screen& layoutScreen,
     SInt32& screenX, SInt32& screenY,
     SInt32& screenW, SInt32& screenH);
+void getJumpCursorPosForLayoutScreenForTest(
+    const etherwaver::layout::ScreenManager& layout,
+    const BaseClientProxy* client,
+    const etherwaver::layout::Screen& layoutScreen,
+    SInt32& x,
+    SInt32& y);
 const etherwaver::layout::Screen* findLayoutScreenForPositionForTest(
     const etherwaver::layout::ScreenManager& layout,
     const std::string& hostId,
@@ -297,7 +303,8 @@ private:
     // options like switch delay and tracking any state required to
     // implement them.  returns true iff a switch is permitted.
     bool                isSwitchOkay(BaseClientProxy* dst, EDirection,
-                            SInt32 x, SInt32 y, SInt32 xActive, SInt32 yActive);
+                            SInt32 x, SInt32 y, SInt32 xActive, SInt32 yActive,
+                            const std::string& layoutScreenId = std::string());
 
     // update switch state due to a mouse move at \p x, \p y that
     // doesn't switch screens.
@@ -356,9 +363,13 @@ private:
     void                refreshPrimaryUhidGeometry();
     bool                trySwitchUsingUhidDirection(IUhidEdgeTransitionHandler::Direction direction);
     void                rememberRecentObjectLayoutSwitch(BaseClientProxy* src,
-                            BaseClientProxy* dst, EDirection direction);
+                            const std::string& srcLayoutScreenId,
+                            BaseClientProxy* dst,
+                            const std::string& dstLayoutScreenId,
+                            EDirection direction);
     bool                isRecentReverseSwitch(BaseClientProxy* newScreen,
-                            EDirection direction) const;
+                            EDirection direction,
+                            const std::string& layoutScreenId) const;
 
     // event handlers
     void                handleShapeChanged(const Event&, void*);
@@ -569,6 +580,8 @@ private:
     bool                m_recentSwitchArmed;
     BaseClientProxy*    m_recentSwitchSource;
     BaseClientProxy*    m_recentSwitchDestination;
+    std::string         m_recentSwitchSourceLayoutScreenId;
+    std::string         m_recentSwitchDestinationLayoutScreenId;
     EDirection          m_recentSwitchDirection;
 
     void                httpLoop();

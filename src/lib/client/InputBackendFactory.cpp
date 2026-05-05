@@ -177,16 +177,8 @@ private:
 
 std::unique_ptr<IInputBackend> createInputBackend(barrier::Screen* screen, const ClientArgs& args)
 {
-    if (!args.m_uhidEnabled) {
-        return std::unique_ptr<IInputBackend>(new ScreenInputBackend(screen));
+    if (args.m_uhidEnabled) {
+        LOG((CLOG_NOTE "uhid: disabled for client cursor path, using screen backend"));
     }
-
-    std::unique_ptr<UhidInputBackend> uhidBackend(new UhidInputBackend(screen, args.m_uhidName));
-    if (uhidBackend->started()) {
-        LOG((CLOG_NOTE "uhid: using backend"));
-        return std::move(uhidBackend);
-    }
-
-    LOG((CLOG_WARN "uhid: failed to start, falling back to screen backend"));
     return std::unique_ptr<IInputBackend>(new ScreenInputBackend(screen));
 }

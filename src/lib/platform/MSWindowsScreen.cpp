@@ -145,6 +145,7 @@ MSWindowsScreen::MSWindowsScreen(
     m_keyState(NULL),
     m_hasMouse(GetSystemMetrics(SM_MOUSEPRESENT) != 0),
     m_showingMouse(false),
+    m_showCursorForceCount(0),
     m_events(events),
     m_dropWindow(NULL),
     m_dropWindowSize(20)
@@ -1782,6 +1783,24 @@ MSWindowsScreen::updateKeysCB()
 void
 MSWindowsScreen::forceShowCursor()
 {
+    if (m_isOnScreen && m_showCursorForceCount == 0) {
+        static const int kMaxShowCursorAdjustments = 16;
+        int count = -1;
+        while (count < 0 &&
+               m_showCursorForceCount < kMaxShowCursorAdjustments) {
+            count = ShowCursor(TRUE);
+            ++m_showCursorForceCount;
+        }
+        LOG((CLOG_DEBUG "forced cursor show count=%d adjustments=%d",
+            count, m_showCursorForceCount));
+    }
+    else if (!m_isOnScreen && m_showCursorForceCount > 0) {
+        while (m_showCursorForceCount > 0) {
+            ShowCursor(FALSE);
+            --m_showCursorForceCount;
+        }
+    }
+
     // check for mouse
     m_hasMouse = (GetSystemMetrics(SM_MOUSEPRESENT) != 0);
 

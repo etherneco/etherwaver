@@ -1785,8 +1785,11 @@ MSWindowsScreen::forceShowCursor()
     // check for mouse
     m_hasMouse = (GetSystemMetrics(SM_MOUSEPRESENT) != 0);
 
-    // decide if we should show the mouse
-    bool showMouse = (!m_hasMouse && !m_isPrimary && m_isOnScreen);
+    // decide if we should show the mouse.  Object-layout can route input
+    // back onto a primary Windows host that has no local mouse attached, so
+    // primary screens need the same MouseKeys visibility workaround as
+    // secondary screens while they are active.
+    bool showMouse = (!m_hasMouse && m_isOnScreen);
 
     // show/hide the mouse
     if (showMouse != m_showingMouse) {

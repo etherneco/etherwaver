@@ -694,6 +694,7 @@ void MainWindow::startBarrier()
     qDebug() << args;
 
     appendLogDebug(QString("command: %1 %2").arg(app, args.join(" ")));
+    appendLogInfo("executable: " + app);
 
     appendLogInfo("config file: " + configFilename());
     appendLogInfo("log level: " + appConfig().logLevelText());

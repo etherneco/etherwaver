@@ -49,6 +49,11 @@ public:
         return false;
     }
 
+    bool movesCursorAfterScreenEnter() const override
+    {
+        return true;
+    }
+
     void keyDown(KeyID id, KeyModifierMask mask, KeyButton button) override
     {
         m_screen->keyDown(id, mask, button);
@@ -124,6 +129,11 @@ public:
     bool managesCursorVisibility() const override
     {
         return true;
+    }
+
+    bool movesCursorAfterScreenEnter() const override
+    {
+        return false;
     }
 
     void keyDown(KeyID id, KeyModifierMask mask, KeyButton) override

@@ -253,8 +253,17 @@ Client::getCursorPos(SInt32& x, SInt32& y) const
 void
 Client::enter(SInt32 xAbs, SInt32 yAbs, UInt32, KeyModifierMask mask, bool)
 {
+    LOG((CLOG_INFO "client enter at %d,%d backendManagesCursor=%s moveAfterEnter=%s",
+        xAbs, yAbs,
+        m_inputBackend->managesCursorVisibility() ? "yes" : "no",
+        m_inputBackend->movesCursorAfterScreenEnter() ? "yes" : "no"));
+
     m_active = true;
-    if (m_inputBackend->managesCursorVisibility()) {
+    if (m_inputBackend->movesCursorAfterScreenEnter()) {
+        m_screen->enter(mask);
+        m_inputBackend->enter(xAbs, yAbs);
+    }
+    else if (m_inputBackend->managesCursorVisibility()) {
         m_screen->enter(mask);
         m_inputBackend->enter(xAbs, yAbs);
     }

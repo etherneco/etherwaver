@@ -909,7 +909,35 @@ XWindowsScreen::fakeMouseMove(SInt32 x, SInt32 y)
 		XTestFakeMotionEvent(m_display, DefaultScreen(m_display),
 							x, y, CurrentTime);
 	}
-    m_impl->XFlush(m_display);
+    m_impl->XSync(m_display, False);
+
+    Window root;
+    Window window;
+    int actualX = 0;
+    int actualY = 0;
+    int xWindow = 0;
+    int yWindow = 0;
+    unsigned int mask = 0;
+    if (m_impl->XQueryPointer(m_display, m_root, &root, &window,
+                              &actualX, &actualY, &xWindow, &yWindow, &mask)) {
+        LOG((CLOG_INFO "xwindows mouse move requested=%d,%d actual=%d,%d xinerama=%s xtestUnaware=%s",
+             x, y, actualX, actualY,
+             m_xinerama ? "yes" : "no",
+             m_xtestIsXineramaUnaware ? "yes" : "no"));
+
+        if (actualX != x || actualY != y) {
+            m_impl->XWarpPointer(m_display, None, m_root, 0, 0, 0, 0, x, y);
+            m_impl->XSync(m_display, False);
+            if (m_impl->XQueryPointer(m_display, m_root, &root, &window,
+                                      &actualX, &actualY, &xWindow, &yWindow, &mask)) {
+                LOG((CLOG_INFO "xwindows mouse move fallback requested=%d,%d actual=%d,%d",
+                     x, y, actualX, actualY));
+            }
+        }
+
+        m_xCursor = actualX;
+        m_yCursor = actualY;
+    }
 }
 
 void

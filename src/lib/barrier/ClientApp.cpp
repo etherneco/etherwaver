@@ -559,6 +559,7 @@ ClientApp::runInner(int argc, char** argv, ILogOutputter* outputter, StartupFunc
     // general initialization
     m_serverAddress = new NetworkAddress;
     argsBase().m_exename = ArgParser::parse_exename(argv[0]);
+    LOG((CLOG_INFO "waverc executable: %s", argv[0]));
 
     // install caller's output filter
     if (outputter != NULL) {

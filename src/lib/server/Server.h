@@ -155,7 +155,6 @@ public:
     ~Server();
 
 #ifdef BARRIER_TEST_ENV
-    Server();
     void setActive(BaseClientProxy* active) {    m_active = active; }
     void setPrimaryClientForTest(PrimaryClient* client) { m_primaryClient = client; }
     void setConfigForTest(Config* config) { m_config = config; }
@@ -171,6 +170,10 @@ public:
         return trySwitchUsingObjectLayout(x, y, absoluteMotion);
     }
 #endif
+
+    // Diagnostic/test constructor. It leaves the server inert until test code
+    // injects clients, config, events, and layout.
+    Server();
 
     //! @name manipulators
     //@{

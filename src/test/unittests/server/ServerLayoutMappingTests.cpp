@@ -2,9 +2,14 @@
 
 #include "server/Server.h"
 #include "server/BaseClientProxy.h"
+#include "server/PrimaryClient.h"
 #include "core/layout/ScreenManager.h"
 
 #include "test/global/gtest.h"
+#include "test/global/TestEventQueue.h"
+
+#include <chrono>
+#include <thread>
 
 namespace {
 
@@ -27,6 +32,9 @@ public:
         , m_y(y)
         , m_w(w)
         , m_h(h)
+        , m_entered(false)
+        , m_lastEnterX(0)
+        , m_lastEnterY(0)
     {
     }
 
@@ -41,7 +49,14 @@ public:
     }
     void getScreens(std::vector<ClientScreenInfo>& screens) const { screens = m_screens; }
     void getCursorPos(SInt32& x, SInt32& y) const { x = m_x; y = m_y; }
-    void enter(SInt32, SInt32, UInt32, KeyModifierMask, bool) {}
+    void enter(SInt32 x, SInt32 y, UInt32, KeyModifierMask, bool)
+    {
+        m_entered = true;
+        m_lastEnterX = x;
+        m_lastEnterY = y;
+        m_x = x;
+        m_y = y;
+    }
     bool leave() { return true; }
     void setClipboard(ClipboardID, const IClipboard*) {}
     void grabClipboard(ClipboardID) {}
@@ -51,7 +66,12 @@ public:
     void keyUp(KeyID, KeyModifierMask, KeyButton) {}
     void mouseDown(ButtonID) {}
     void mouseUp(ButtonID) {}
-    void mouseMove(SInt32, SInt32) {}
+    void mouseMove(SInt32 x, SInt32 y)
+    {
+        m_mouseMoves.push_back(std::make_pair(x, y));
+        m_x = x;
+        m_y = y;
+    }
     void mouseRelativeMove(SInt32, SInt32) {}
     void mouseWheel(SInt32, SInt32) {}
     void screensaver(bool) {}
@@ -61,12 +81,92 @@ public:
     void fileChunkSending(UInt8, char*, size_t) {}
     barrier::IStream* getStream() const { return NULL; }
 
+    bool m_entered;
+    SInt32 m_lastEnterX;
+    SInt32 m_lastEnterY;
+    std::vector<std::pair<SInt32, SInt32> > m_mouseMoves;
+
 private:
     std::vector<ClientScreenInfo> m_screens;
-    SInt32 m_x;
-    SInt32 m_y;
+    mutable SInt32 m_x;
+    mutable SInt32 m_y;
     SInt32 m_w;
     SInt32 m_h;
+};
+
+class FakePrimaryClient : public PrimaryClient {
+public:
+    FakePrimaryClient(const std::string& name,
+                      const std::vector<ClientScreenInfo>& screens,
+                      SInt32 x, SInt32 y, SInt32 w, SInt32 h)
+        : PrimaryClient()
+        , m_name(name)
+        , m_screens(screens)
+        , m_x(x)
+        , m_y(y)
+        , m_w(w)
+        , m_h(h)
+        , m_entered(false)
+        , m_lastEnterX(0)
+        , m_lastEnterY(0)
+    {
+    }
+
+    std::string getName() const { return m_name; }
+    void* getEventTarget() const { return NULL; }
+    bool getClipboard(ClipboardID, IClipboard*) const { return false; }
+    void getShape(SInt32& x, SInt32& y, SInt32& w, SInt32& h) const
+    {
+        x = m_x;
+        y = m_y;
+        w = m_w;
+        h = m_h;
+    }
+    void getScreens(std::vector<ClientScreenInfo>& screens) const { screens = m_screens; }
+    void getCursorPos(SInt32& x, SInt32& y) const { x = m_x; y = m_y; }
+    void enter(SInt32 x, SInt32 y, UInt32, KeyModifierMask, bool)
+    {
+        m_entered = true;
+        m_lastEnterX = x;
+        m_lastEnterY = y;
+        m_x = x;
+        m_y = y;
+    }
+    bool leave() { return true; }
+    void setClipboard(ClipboardID, const IClipboard*) {}
+    void grabClipboard(ClipboardID) {}
+    void setClipboardDirty(ClipboardID, bool) {}
+    void keyDown(KeyID, KeyModifierMask, KeyButton) {}
+    void keyRepeat(KeyID, KeyModifierMask, SInt32, KeyButton) {}
+    void keyUp(KeyID, KeyModifierMask, KeyButton) {}
+    void mouseDown(ButtonID) {}
+    void mouseUp(ButtonID) {}
+    void mouseMove(SInt32 x, SInt32 y)
+    {
+        m_mouseMoves.push_back(std::make_pair(x, y));
+        m_x = x;
+        m_y = y;
+    }
+    void mouseRelativeMove(SInt32, SInt32) {}
+    void mouseWheel(SInt32, SInt32) {}
+    void screensaver(bool) {}
+    void resetOptions() {}
+    void setOptions(const OptionsList&) {}
+    void sendDragInfo(UInt32, const char*, size_t) {}
+    void fileChunkSending(UInt8, char*, size_t) {}
+    KeyModifierMask getToggleMask() const { return 0; }
+    barrier::IStream* getStream() const { return NULL; }
+
+    std::string m_name;
+    std::vector<ClientScreenInfo> m_screens;
+    mutable SInt32 m_x;
+    mutable SInt32 m_y;
+    SInt32 m_w;
+    SInt32 m_h;
+    bool m_entered;
+    SInt32 m_lastEnterX;
+    SInt32 m_lastEnterY;
+    std::vector<std::pair<SInt32, SInt32> > m_mouseMoves;
 };
 
 TEST(ServerLayoutMappingTests, selectClientScreenForLayoutPrefersGeometryWhenNamesAreSwapped)
@@ -318,6 +418,150 @@ TEST(ServerLayoutMappingTests, leftEdgeFromSiloeMapsToStackedMamreMonitor)
     EXPECT_EQ("mamre:mamre-2", resolved->m_id);
     EXPECT_EQ(24, targetX);
     EXPECT_EQ(200, targetY);
+}
+
+TEST(ServerLayoutMappingTests, rightEdgeFromStackedMamreBottomMonitorMapsToSiloe)
+{
+    ScreenManager layout;
+    std::vector<Screen> layoutScreens;
+    layoutScreens.push_back(Screen("mamre:mamre-1", "mamre", "mamre-1",
+                                   0, 0, 1920, 1080));
+    layoutScreens.back().m_rightLink = "Siloe-1";
+    layoutScreens.push_back(Screen("Siloe:Siloe-1", "Siloe", "Siloe-1",
+                                   1920, 0, 1920, 1080));
+    layoutScreens.back().m_leftLink = "mamre-1";
+    layoutScreens.back().m_rightLink = "mamre-2";
+    layoutScreens.push_back(Screen("mamre:mamre-2", "mamre", "mamre-2",
+                                   3840, 0, 1920, 1080));
+    layoutScreens.back().m_leftLink = "Siloe-1";
+    layout.setScreens(layoutScreens);
+
+    std::vector<ClientScreenInfo> siloeScreens;
+    siloeScreens.push_back(ClientScreenInfo("Siloe-1", 0, 0, 1920, 1080));
+
+    EDirection direction = kNoDirection;
+    SInt32 targetX = 0;
+    SInt32 targetY = 0;
+    const Screen* resolved = resolveObjectLayoutTargetForTest(
+        layout,
+        layoutScreens[0],
+        siloeScreens,
+        0, 2160, 3840, 2160,
+        3840, 2360,
+        direction,
+        targetX, targetY);
+
+    EXPECT_EQ(kRight, direction);
+    ASSERT_NE(static_cast<const Screen*>(NULL), resolved);
+    EXPECT_EQ("Siloe:Siloe-1", resolved->m_id);
+    EXPECT_EQ(24, targetX);
+    EXPECT_EQ(100, targetY);
+}
+
+TEST(ServerLayoutMappingTests, leftEdgeFromStackedMamreTopMonitorMapsBackToSiloe)
+{
+    ScreenManager layout;
+    std::vector<Screen> layoutScreens;
+    layoutScreens.push_back(Screen("mamre:mamre-1", "mamre", "mamre-1",
+                                   0, 0, 1920, 1080));
+    layoutScreens.back().m_rightLink = "Siloe-1";
+    layoutScreens.push_back(Screen("Siloe:Siloe-1", "Siloe", "Siloe-1",
+                                   1920, 0, 1920, 1080));
+    layoutScreens.back().m_leftLink = "mamre-1";
+    layoutScreens.back().m_rightLink = "mamre-2";
+    layoutScreens.push_back(Screen("mamre:mamre-2", "mamre", "mamre-2",
+                                   3840, 0, 1920, 1080));
+    layoutScreens.back().m_leftLink = "Siloe-1";
+    layout.setScreens(layoutScreens);
+
+    std::vector<ClientScreenInfo> siloeScreens;
+    siloeScreens.push_back(ClientScreenInfo("Siloe-1", 0, 0, 1920, 1080));
+
+    EDirection direction = kNoDirection;
+    SInt32 targetX = 0;
+    SInt32 targetY = 0;
+    const Screen* resolved = resolveObjectLayoutTargetForTest(
+        layout,
+        layoutScreens[2],
+        siloeScreens,
+        0, 0, 3840, 2160,
+        -1, 1018,
+        direction,
+        targetX, targetY);
+
+    EXPECT_EQ(kLeft, direction);
+    ASSERT_NE(static_cast<const Screen*>(NULL), resolved);
+    EXPECT_EQ("Siloe:Siloe-1", resolved->m_id);
+    EXPECT_EQ(1895, targetX);
+    EXPECT_EQ(509, targetY);
+}
+
+TEST(ServerLayoutMappingTests, objectLayoutServerSimulationSwitchesAcrossStackedRemoteMonitors)
+{
+    TestEventQueue events;
+    Config config(&events);
+    config.addScreen("Siloe");
+    config.addScreen("mamre");
+
+    ScreenManager layout;
+    std::vector<Screen> layoutScreens;
+    layoutScreens.push_back(Screen("mamre:mamre-1", "mamre", "mamre-1",
+                                   0, 0, 1920, 1080));
+    layoutScreens.back().m_rightLink = "Siloe-1";
+    layoutScreens.push_back(Screen("Siloe:Siloe-1", "Siloe", "Siloe-1",
+                                   1920, 0, 1920, 1080));
+    layoutScreens.back().m_leftLink = "mamre-1";
+    layoutScreens.back().m_rightLink = "mamre-2";
+    layoutScreens.push_back(Screen("mamre:mamre-2", "mamre", "mamre-2",
+                                   3840, 0, 1920, 1080));
+    layoutScreens.back().m_leftLink = "Siloe-1";
+    layout.setScreens(layoutScreens);
+
+    std::vector<ClientScreenInfo> siloeScreens;
+    siloeScreens.push_back(ClientScreenInfo("Siloe-1", 0, 0, 1920, 1080));
+    FakePrimaryClient siloe("Siloe", siloeScreens, 0, 0, 1920, 1080);
+
+    std::vector<ClientScreenInfo> mamreScreens;
+    mamreScreens.push_back(ClientScreenInfo("mamre-1", 0, 2160, 3840, 2160));
+    mamreScreens.push_back(ClientScreenInfo("mamre-2", 0, 0, 3840, 2160));
+    FakeClientProxy mamre("mamre", mamreScreens, 0, 0, 3840, 4320);
+
+    Server server;
+    server.setEventsForTest(&events);
+    server.setConfigForTest(&config);
+    server.setPrimaryClientForTest(&siloe);
+    server.addClientForTest("Siloe", &siloe);
+    server.addClientForTest("mamre", &mamre);
+    server.setScreenLayoutForTest(layout);
+    server.setActive(&mamre);
+    server.setActiveLayoutScreenIdForTest("mamre:mamre-1");
+    server.setCursorPosForTest(3839, 2360);
+
+    ASSERT_TRUE(server.trySwitchUsingObjectLayoutForTest(3840, 2360, false));
+    EXPECT_EQ(&siloe, server.getActiveClientForTest());
+    EXPECT_EQ("Siloe:Siloe-1", server.getActiveLayoutScreenIdForTest());
+    EXPECT_TRUE(siloe.m_entered);
+    EXPECT_EQ(24, siloe.m_lastEnterX);
+    EXPECT_EQ(100, siloe.m_lastEnterY);
+
+    ASSERT_TRUE(server.trySwitchUsingObjectLayoutForTest(1920, 509, true));
+    EXPECT_EQ(&mamre, server.getActiveClientForTest());
+    EXPECT_EQ("mamre:mamre-2", server.getActiveLayoutScreenIdForTest());
+    EXPECT_TRUE(mamre.m_entered);
+    EXPECT_EQ(24, mamre.m_lastEnterX);
+    EXPECT_EQ(1018, mamre.m_lastEnterY);
+
+    EXPECT_FALSE(server.trySwitchUsingObjectLayoutForTest(-1, 1018, false));
+    EXPECT_EQ(&mamre, server.getActiveClientForTest());
+    EXPECT_EQ("mamre:mamre-2", server.getActiveLayoutScreenIdForTest());
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    ASSERT_TRUE(server.trySwitchUsingObjectLayoutForTest(-1, 1018, false));
+    EXPECT_EQ(&siloe, server.getActiveClientForTest());
+    EXPECT_EQ("Siloe:Siloe-1", server.getActiveLayoutScreenIdForTest());
+    EXPECT_EQ(1895, siloe.m_lastEnterX);
+    EXPECT_EQ(509, siloe.m_lastEnterY);
 }
 
 } // namespace

@@ -989,7 +989,6 @@ Server::~Server()
     }
 }
 
-#ifdef BARRIER_TEST_ENV
 Server::Server() :
     m_mock(true),
     m_primaryClient(NULL),
@@ -1046,7 +1045,6 @@ Server::Server() :
     m_recentSwitchDirection(kNoDirection)
 {
 }
-#endif
 
 bool
 etherwaver::server::selectClientScreenForLayoutScreenForTest(
@@ -1964,6 +1962,10 @@ Server::isLockedToScreenServer() const
 bool
 Server::isLockedToScreen() const
 {
+    if (m_mock) {
+        return false;
+    }
+
 	// locked if we say we're locked
 	if (isLockedToScreenServer()) {
 		return true;

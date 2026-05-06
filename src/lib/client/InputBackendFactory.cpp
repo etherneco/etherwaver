@@ -117,8 +117,8 @@ public:
     void enter(SInt32 xAbs, SInt32 yAbs) override
     {
         m_uhidServer->clearInputState();
-        LOG((CLOG_INFO "uhid: enter cursor via screen backend at %d,%d", xAbs, yAbs));
-        m_screen->mouseMove(xAbs, yAbs);
+        m_uhidServer->primeAbsolutePosition(xAbs, yAbs);
+        LOG((CLOG_INFO "uhid: enter cursor at %d,%d", xAbs, yAbs));
     }
 
     void leave() override
@@ -163,8 +163,7 @@ public:
 
     void mouseMove(SInt32 xAbs, SInt32 yAbs) override
     {
-        LOG((CLOG_DEBUG1 "uhid: move cursor via screen backend to %d,%d", xAbs, yAbs));
-        m_screen->mouseMove(xAbs, yAbs);
+        m_uhidServer->mouseMoveAbsolute(xAbs, yAbs);
     }
 
     void mouseRelativeMove(SInt32 dx, SInt32 dy) override
@@ -188,7 +187,14 @@ private:
 std::unique_ptr<IInputBackend> createInputBackend(barrier::Screen* screen, const ClientArgs& args)
 {
     if (args.m_uhidEnabled) {
-        LOG((CLOG_NOTE "uhid: disabled for client cursor path, using screen backend"));
+        std::unique_ptr<UhidInputBackend> backend(new UhidInputBackend(screen, args.m_uhidName));
+        if (backend->started()) {
+            LOG((CLOG_NOTE "uhid: using Linux UHID input backend"));
+            return std::unique_ptr<IInputBackend>(backend.release());
+        }
+
+        LOG((CLOG_WARN "uhid: failed to start Linux UHID input backend, using screen backend"));
     }
+
     return std::unique_ptr<IInputBackend>(new ScreenInputBackend(screen));
 }

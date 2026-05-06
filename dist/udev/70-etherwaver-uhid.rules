@@ -1,0 +1,2 @@
+# Allow an active local EtherWaver session to create UHID keyboard/mouse devices.
+SUBSYSTEM=="misc", KERNEL=="uhid", MODE="0660", GROUP="input", TAG+="uaccess"

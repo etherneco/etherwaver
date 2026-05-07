@@ -169,6 +169,9 @@ public:
     bool trySwitchUsingObjectLayoutForTest(SInt32 x, SInt32 y, bool absoluteMotion) {
         return trySwitchUsingObjectLayout(x, y, absoluteMotion);
     }
+    void onMouseMoveSecondaryForTest(SInt32 dx, SInt32 dy) {
+        onMouseMoveSecondary(dx, dy);
+    }
 #endif
 
     // Diagnostic/test constructor. It leaves the server inert until test code

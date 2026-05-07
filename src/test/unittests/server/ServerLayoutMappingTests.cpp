@@ -564,4 +564,49 @@ TEST(ServerLayoutMappingTests, objectLayoutServerSimulationSwitchesAcrossStacked
     EXPECT_EQ(509, siloe.m_lastEnterY);
 }
 
+TEST(ServerLayoutMappingTests, objectLayoutSecondaryMotionInsideLogicalScreenMovesCursor)
+{
+    TestEventQueue events;
+    Config config(&events);
+    config.addScreen("Siloe");
+    config.addScreen("KANAAN");
+
+    ScreenManager layout;
+    std::vector<Screen> layoutScreens;
+    layoutScreens.push_back(Screen("KANAAN:KANAAN-1", "KANAAN", "KANAAN-1",
+                                   0, 0, 1920, 1080));
+    layoutScreens.back().m_rightLink = "Siloe-1";
+    layoutScreens.push_back(Screen("Siloe:Siloe-1", "Siloe", "Siloe-1",
+                                   1920, 0, 1920, 1080));
+    layoutScreens.back().m_leftLink = "KANAAN-1";
+    layout.setScreens(layoutScreens);
+
+    std::vector<ClientScreenInfo> siloeScreens;
+    siloeScreens.push_back(ClientScreenInfo("Siloe-1", 0, 0, 1920, 1080));
+    FakePrimaryClient siloe("Siloe", siloeScreens, 0, 0, 1920, 1080);
+
+    std::vector<ClientScreenInfo> kanaanScreens;
+    kanaanScreens.push_back(ClientScreenInfo("KANAAN-1", 0, 0, 1920, 1080));
+    FakeClientProxy kanaan("KANAAN", kanaanScreens, 100, 100, 1920, 1080);
+
+    Server server;
+    server.setEventsForTest(&events);
+    server.setConfigForTest(&config);
+    server.setPrimaryClientForTest(&siloe);
+    server.addClientForTest("Siloe", &siloe);
+    server.addClientForTest("KANAAN", &kanaan);
+    server.setScreenLayoutForTest(layout);
+    server.setActive(&kanaan);
+    server.setActiveLayoutScreenIdForTest("KANAAN:KANAAN-1");
+    server.setCursorPosForTest(100, 100);
+
+    server.onMouseMoveSecondaryForTest(10, 5);
+
+    ASSERT_EQ(1u, kanaan.m_mouseMoves.size());
+    EXPECT_EQ(110, kanaan.m_mouseMoves.back().first);
+    EXPECT_EQ(105, kanaan.m_mouseMoves.back().second);
+    EXPECT_EQ(&kanaan, server.getActiveClientForTest());
+    EXPECT_EQ("KANAAN:KANAAN-1", server.getActiveLayoutScreenIdForTest());
+}
+
 } // namespace

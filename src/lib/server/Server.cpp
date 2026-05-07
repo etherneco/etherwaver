@@ -3801,10 +3801,14 @@ Server::onMouseMoveSecondary(SInt32 dx, SInt32 dy)
 					  << " clamped=" << clampedX << "," << clampedY
 					  << " physicalScreen=" << sx << "," << sy << " " << sw << "x" << sh;
 				appendObjectLayoutDebugLog(debug.str());
-				m_x = clampedX;
-				m_y = clampedY;
 				LOG((CLOG_DEBUG2 "object-layout clamp to \"%s\" at %d,%d",
-					sourceScreen->m_id.c_str(), m_x, m_y));
+					sourceScreen->m_id.c_str(), clampedX, clampedY));
+			}
+			m_x = clampedX;
+			m_y = clampedY;
+			if (m_x != xOld || m_y != yOld) {
+				LOG((CLOG_DEBUG2 "object-layout move on %s/%s to %d,%d",
+					getName(m_active).c_str(), sourceScreen->m_id.c_str(), m_x, m_y));
 				m_active->mouseMove(m_x, m_y);
 			}
 			return;

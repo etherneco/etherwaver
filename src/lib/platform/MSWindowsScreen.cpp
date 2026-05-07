@@ -775,6 +775,9 @@ void
 MSWindowsScreen::fakeMouseMove(SInt32 x, SInt32 y)
 {
     m_desks->fakeMouseMove(x, y);
+    if (m_isOnScreen) {
+        forceShowCursor();
+    }
     if (m_buttons[kButtonLeft]) {
         m_draggingStarted = true;
     }
@@ -1385,6 +1388,7 @@ MSWindowsScreen::onMouseMove(SInt32 mx, SInt32 my)
     saveMousePosition(mx, my);
 
     if (m_isOnScreen) {
+        forceShowCursor();
 
         // motion on primary screen
         sendEvent(
@@ -1783,16 +1787,31 @@ MSWindowsScreen::updateKeysCB()
 void
 MSWindowsScreen::forceShowCursor()
 {
-    if (m_isOnScreen && m_showCursorForceCount == 0) {
-        static const int kMaxShowCursorAdjustments = 16;
-        int count = -1;
-        while (count < 0 &&
-               m_showCursorForceCount < kMaxShowCursorAdjustments) {
-            count = ShowCursor(TRUE);
-            ++m_showCursorForceCount;
+    if (m_isOnScreen) {
+        CURSORINFO cursorInfo;
+        cursorInfo.cbSize = sizeof(cursorInfo);
+        const bool cursorVisible =
+            (GetCursorInfo(&cursorInfo) != 0) &&
+            ((cursorInfo.flags & CURSOR_SHOWING) != 0);
+
+        if (!cursorVisible) {
+            static const int kMaxShowCursorAdjustments = 16;
+            int count = -1;
+            int adjustments = 0;
+            while (adjustments < kMaxShowCursorAdjustments) {
+                count = ShowCursor(TRUE);
+                ++m_showCursorForceCount;
+                ++adjustments;
+
+                cursorInfo.cbSize = sizeof(cursorInfo);
+                if (GetCursorInfo(&cursorInfo) != 0 &&
+                    (cursorInfo.flags & CURSOR_SHOWING) != 0) {
+                    break;
+                }
+            }
+            LOG((CLOG_DEBUG "forced cursor show count=%d adjustments=%d",
+                count, adjustments));
         }
-        LOG((CLOG_DEBUG "forced cursor show count=%d adjustments=%d",
-            count, m_showCursorForceCount));
     }
     else if (!m_isOnScreen && m_showCursorForceCount > 0) {
         while (m_showCursorForceCount > 0) {

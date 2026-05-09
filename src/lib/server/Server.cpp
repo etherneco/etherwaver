@@ -2082,6 +2082,10 @@ Server::switchScreen(BaseClientProxy* dst,
 		m_events->addEvent(Event(m_events->forServer().screenSwitched(), this, info));
 	}
 	else {
+		const bool logicalScreenChanged =
+			usingObjectLayout() &&
+			!layoutScreenId.empty() &&
+			layoutScreenId != m_activeLayoutScreenId;
 		if (!layoutScreenId.empty()) {
 			m_activeLayoutScreenId = layoutScreenId;
 		}
@@ -2092,7 +2096,19 @@ Server::switchScreen(BaseClientProxy* dst,
 			m_currentHost = (screen != NULL) ? layoutScreenDisplayName(*screen) : dst->getName();
 			m_current_ip.clear();
 		}
-		m_active->mouseMove(x, y);
+
+		// A same-client object-layout switch still changes the physical monitor.
+		// Wayland/UHID clients use enter() to refresh the active monitor bounds;
+		// a plain mouseMove() would keep clamping against the previous monitor.
+		if (logicalScreenChanged) {
+			++m_seqNum;
+			m_active->enter(x, y, m_seqNum,
+							m_primaryClient->getToggleMask(),
+							forScreensaver);
+		}
+		else {
+			m_active->mouseMove(x, y);
+		}
 	}
 }
 

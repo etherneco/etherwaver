@@ -564,6 +564,96 @@ TEST(ServerLayoutMappingTests, objectLayoutServerSimulationSwitchesAcrossStacked
     EXPECT_EQ(509, siloe.m_lastEnterY);
 }
 
+TEST(ServerLayoutMappingTests, sameClientLogicalSwitchSendsEnterSoClientRefreshesMonitorBounds)
+{
+    TestEventQueue events;
+    Config config(&events);
+    config.addScreen("Siloe");
+    config.addScreen("mamre");
+
+    ScreenManager layout;
+    std::vector<Screen> layoutScreens;
+    layoutScreens.push_back(Screen("mamre:mamre-1", "mamre", "mamre-1",
+                                   0, 0, 1920, 1080));
+    layoutScreens.back().m_rightLink = "mamre-2";
+    layoutScreens.push_back(Screen("mamre:mamre-2", "mamre", "mamre-2",
+                                   1920, 0, 1920, 1080));
+    layoutScreens.back().m_leftLink = "mamre-1";
+    layout.setScreens(layoutScreens);
+
+    std::vector<ClientScreenInfo> siloeScreens;
+    siloeScreens.push_back(ClientScreenInfo("Siloe-1", 0, 0, 1920, 1080));
+    FakePrimaryClient siloe("Siloe", siloeScreens, 0, 0, 1920, 1080);
+
+    std::vector<ClientScreenInfo> mamreScreens;
+    mamreScreens.push_back(ClientScreenInfo("mamre-1", 0, 0, 1920, 1080));
+    mamreScreens.push_back(ClientScreenInfo("mamre-2", 1920, 0, 1920, 1080));
+    FakeClientProxy mamre("mamre", mamreScreens, 100, 100, 3840, 1080);
+
+    Server server;
+    server.setEventsForTest(&events);
+    server.setConfigForTest(&config);
+    server.setPrimaryClientForTest(&siloe);
+    server.addClientForTest("Siloe", &siloe);
+    server.addClientForTest("mamre", &mamre);
+    server.setScreenLayoutForTest(layout);
+    server.setActive(&mamre);
+    server.setActiveLayoutScreenIdForTest("mamre:mamre-1");
+    server.setCursorPosForTest(1919, 100);
+
+    ASSERT_TRUE(server.trySwitchUsingObjectLayoutForTest(1920, 100, false));
+    EXPECT_EQ(&mamre, server.getActiveClientForTest());
+    EXPECT_EQ("mamre:mamre-2", server.getActiveLayoutScreenIdForTest());
+    EXPECT_TRUE(mamre.m_entered);
+    EXPECT_EQ(1944, mamre.m_lastEnterX);
+    EXPECT_EQ(100, mamre.m_lastEnterY);
+    EXPECT_TRUE(mamre.m_mouseMoves.empty());
+}
+
+TEST(ServerLayoutMappingTests, sameClientLogicalScreensWithoutLinkAreClampedToSourceMonitor)
+{
+    TestEventQueue events;
+    Config config(&events);
+    config.addScreen("Siloe");
+    config.addScreen("mamre");
+
+    ScreenManager layout;
+    std::vector<Screen> layoutScreens;
+    layoutScreens.push_back(Screen("mamre:mamre-1", "mamre", "mamre-1",
+                                   0, 0, 1920, 1080));
+    layoutScreens.push_back(Screen("mamre:mamre-2", "mamre", "mamre-2",
+                                   1920, 0, 1920, 1080));
+    layout.setScreens(layoutScreens);
+
+    std::vector<ClientScreenInfo> siloeScreens;
+    siloeScreens.push_back(ClientScreenInfo("Siloe-1", 0, 0, 1920, 1080));
+    FakePrimaryClient siloe("Siloe", siloeScreens, 0, 0, 1920, 1080);
+
+    std::vector<ClientScreenInfo> mamreScreens;
+    mamreScreens.push_back(ClientScreenInfo("mamre-1", 0, 0, 1920, 1080));
+    mamreScreens.push_back(ClientScreenInfo("mamre-2", 1920, 0, 1920, 1080));
+    FakeClientProxy mamre("mamre", mamreScreens, 100, 100, 3840, 1080);
+
+    Server server;
+    server.setEventsForTest(&events);
+    server.setConfigForTest(&config);
+    server.setPrimaryClientForTest(&siloe);
+    server.addClientForTest("Siloe", &siloe);
+    server.addClientForTest("mamre", &mamre);
+    server.setScreenLayoutForTest(layout);
+    server.setActive(&mamre);
+    server.setActiveLayoutScreenIdForTest("mamre:mamre-1");
+    server.setCursorPosForTest(1919, 100);
+
+    EXPECT_FALSE(server.trySwitchUsingObjectLayoutForTest(1920, 100, false));
+    EXPECT_EQ(&mamre, server.getActiveClientForTest());
+    EXPECT_EQ("mamre:mamre-1", server.getActiveLayoutScreenIdForTest());
+    EXPECT_FALSE(mamre.m_entered);
+    ASSERT_FALSE(mamre.m_mouseMoves.empty());
+    EXPECT_EQ(1919, mamre.m_mouseMoves.back().first);
+    EXPECT_EQ(100, mamre.m_mouseMoves.back().second);
+}
+
 TEST(ServerLayoutMappingTests, objectLayoutSecondaryMotionInsideLogicalScreenMovesCursor)
 {
     TestEventQueue events;

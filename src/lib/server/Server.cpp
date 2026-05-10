@@ -141,6 +141,34 @@ applyTransitionInset(int value, int minValue, int maxValue, EDirection direction
     return value;
 }
 
+static void
+snapGlobalCoordinateToDestinationEdge(const etherwaver::layout::Screen& destination,
+                                      EDirection direction,
+                                      int& globalX,
+                                      int& globalY)
+{
+    switch (direction) {
+    case kLeft:
+        globalX = destination.m_x + destination.m_width - 1;
+        break;
+
+    case kRight:
+        globalX = destination.m_x;
+        break;
+
+    case kTop:
+        globalY = destination.m_y + destination.m_height - 1;
+        break;
+
+    case kBottom:
+        globalY = destination.m_y;
+        break;
+
+    case kNoDirection:
+        break;
+    }
+}
+
 static std::string
 layoutScreenDisplayName(const etherwaver::layout::Screen& screen)
 {
@@ -1181,6 +1209,8 @@ etherwaver::server::resolveObjectLayoutTargetForTest(
     if (destinationScreen == NULL) {
         return NULL;
     }
+    snapGlobalCoordinateToDestinationEdge(*destinationScreen, direction,
+                                          globalX, globalY);
 
     SInt32 dx = 0;
     SInt32 dy = 0;
@@ -1801,6 +1831,8 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
                                         *resolvedDestination, dx, dy, dw, dh)) {
         destinationClient->getShape(dx, dy, dw, dh);
     }
+    snapGlobalCoordinateToDestinationEdge(*resolvedDestination, direction,
+                                          globalX, globalY);
 
     SInt32 targetX = toClientCoordinate(globalX, resolvedDestination->m_x, resolvedDestination->m_width,
                                         dx, dw);

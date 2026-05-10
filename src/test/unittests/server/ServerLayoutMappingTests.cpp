@@ -463,6 +463,44 @@ TEST(ServerLayoutMappingTests, leftEdgeFromSiloeMapsToStackedMamreMonitor)
     EXPECT_EQ(200, targetY);
 }
 
+TEST(ServerLayoutMappingTests, rightEdgeFromSiloeUsesLeftEdgeOfLinkedMamreMonitor)
+{
+    ScreenManager layout;
+    std::vector<Screen> layoutScreens;
+    layoutScreens.push_back(Screen("mamre:mamre-1", "mamre", "mamre-1",
+                                   0, 0, 1920, 1080));
+    layoutScreens.back().m_rightLink = "Siloe-1";
+    layoutScreens.push_back(Screen("Siloe:Siloe-1", "Siloe", "Siloe-1",
+                                   1920, 0, 1920, 1080));
+    layoutScreens.back().m_leftLink = "mamre-1";
+    layoutScreens.back().m_rightLink = "mamre-2";
+    layoutScreens.push_back(Screen("mamre:mamre-2", "mamre", "mamre-2",
+                                   0, 0, 1920, 1080));
+    layoutScreens.back().m_leftLink = "Siloe-1";
+    layout.setScreens(layoutScreens);
+
+    std::vector<ClientScreenInfo> mamreScreens;
+    mamreScreens.push_back(ClientScreenInfo("mamre-2", 0, 0, 1920, 1080));
+
+    EDirection direction = kNoDirection;
+    SInt32 targetX = 0;
+    SInt32 targetY = 0;
+    const Screen* resolved = resolveObjectLayoutTargetForTest(
+        layout,
+        layoutScreens[1],
+        mamreScreens,
+        0, 0, 1920, 1080,
+        1920, 200,
+        direction,
+        targetX, targetY);
+
+    EXPECT_EQ(kRight, direction);
+    ASSERT_NE(static_cast<const Screen*>(NULL), resolved);
+    EXPECT_EQ("mamre:mamre-2", resolved->m_id);
+    EXPECT_EQ(24, targetX);
+    EXPECT_EQ(200, targetY);
+}
+
 TEST(ServerLayoutMappingTests, rightEdgeFromStackedMamreBottomMonitorMapsToSiloe)
 {
     ScreenManager layout;

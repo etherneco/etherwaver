@@ -18,14 +18,50 @@
 #include "client/InputBackendFactory.h"
 
 #include "client/IInputBackend.h"
+#include "client/SoftCursorPositioner.h"
 #include "barrier/ClientArgs.h"
 #include "barrier/Screen.h"
 #include "base/Log.h"
 #include "platform/UhidServer.h"
 
+#include <algorithm>
 #include <cassert>
+#include <cstdio>
+#include <cstdlib>
+#include <vector>
+
+#if defined(__linux__)
+#include <unistd.h>
+#endif
 
 namespace {
+
+std::string uhidDebugStatusPath()
+{
+#if defined(__linux__)
+    char buffer[128];
+    snprintf(buffer, sizeof(buffer), "/tmp/etherwaver-uhid-cursor-%ld.status", static_cast<long>(getuid()));
+    return buffer;
+#else
+    return "";
+#endif
+}
+
+void writeUhidDebugStatusLine(const char* line)
+{
+    const std::string path = uhidDebugStatusPath();
+    if (path.empty()) {
+        return;
+    }
+
+    FILE* file = fopen(path.c_str(), "w");
+    if (file == NULL) {
+        return;
+    }
+
+    fprintf(file, "%s\n", line != NULL ? line : "unavailable");
+    fclose(file);
+}
 
 class ScreenInputBackend : public IInputBackend {
 public:
@@ -98,15 +134,64 @@ private:
     barrier::Screen* m_screen;
 };
 
+class ScreenCursorPositionProvider : public ICursorPositionProvider {
+public:
+    explicit ScreenCursorPositionProvider(barrier::Screen* screen)
+        : m_screen(screen)
+    {
+        assert(m_screen != NULL);
+    }
+
+    void getCursorPos(SInt32& x, SInt32& y) override
+    {
+        m_screen->getCursorPos(x, y);
+    }
+
+private:
+    barrier::Screen* m_screen;
+};
+
+class UhidCursorMotionSink : public ICursorMotionSink {
+public:
+    explicit UhidCursorMotionSink(UhidServer* server)
+        : m_server(server)
+    {
+        assert(m_server != NULL);
+    }
+
+    void primeAbsolutePosition(SInt32 x, SInt32 y) override
+    {
+        m_server->primeAbsolutePosition(x, y);
+    }
+
+    void mouseMoveAbsolute(SInt32 x, SInt32 y) override
+    {
+        m_server->mouseMoveAbsolute(x, y);
+    }
+
+private:
+    UhidServer* m_server;
+};
+
 class UhidInputBackend : public IInputBackend {
 public:
     UhidInputBackend(barrier::Screen* screen, const String& deviceName)
         : m_screen(screen)
         , m_started(false)
         , m_uhidServer(new UhidServer())
+        , m_cursorPositionProvider(new ScreenCursorPositionProvider(screen))
+        , m_cursorMotionSink(new UhidCursorMotionSink(m_uhidServer.get()))
+        , m_hasActiveBounds(false)
+        , m_activeX(0)
+        , m_activeY(0)
+        , m_activeW(0)
+        , m_activeH(0)
+        , m_cursorX(0)
+        , m_cursorY(0)
     {
         assert(m_screen != NULL);
         m_started = m_uhidServer->start(deviceName);
+        writeDebugStatus(m_started ? "started" : "start-failed");
     }
 
     bool started() const
@@ -117,13 +202,24 @@ public:
     void enter(SInt32 xAbs, SInt32 yAbs) override
     {
         m_uhidServer->clearInputState();
-        m_uhidServer->primeAbsolutePosition(xAbs, yAbs);
-        LOG((CLOG_INFO "uhid: enter cursor at %d,%d", xAbs, yAbs));
+        m_hasActiveBounds = false;
+        refreshScreens();
+        updateActiveBoundsForPoint(xAbs, yAbs);
+        clampToActiveBounds(xAbs, yAbs);
+        softSetCursorPos(xAbs, yAbs, "enter");
+        LOG((CLOG_INFO "uhid: enter cursor at %d,%d bounds=%d,%d %dx%d",
+            xAbs, yAbs, m_activeX, m_activeY, m_activeW, m_activeH));
+        writeDebugStatus("enter");
     }
 
     void leave() override
     {
         m_uhidServer->clearInputState();
+        m_hasActiveBounds = false;
+        m_screens.clear();
+        m_cursorX = 0;
+        m_cursorY = 0;
+        writeDebugStatus("leave");
     }
 
     bool managesCursorVisibility() const override
@@ -163,12 +259,38 @@ public:
 
     void mouseMove(SInt32 xAbs, SInt32 yAbs) override
     {
+        const SInt32 requestedX = xAbs;
+        const SInt32 requestedY = yAbs;
+        clampToActiveBounds(xAbs, yAbs);
+        if (requestedX != xAbs || requestedY != yAbs) {
+            LOG((CLOG_DEBUG2
+                "uhid: clamp absolute cursor requested=%d,%d clamped=%d,%d bounds=%d,%d %dx%d",
+                requestedX, requestedY, xAbs, yAbs,
+                m_activeX, m_activeY, m_activeW, m_activeH));
+        }
+        m_cursorX = xAbs;
+        m_cursorY = yAbs;
         m_uhidServer->mouseMoveAbsolute(xAbs, yAbs);
+        writeDebugStatus("absolute");
     }
 
     void mouseRelativeMove(SInt32 dx, SInt32 dy) override
     {
-        m_uhidServer->mouseRelativeMove(dx, dy);
+        SInt32 xAbs = m_cursorX + dx;
+        SInt32 yAbs = m_cursorY + dy;
+        const SInt32 requestedX = xAbs;
+        const SInt32 requestedY = yAbs;
+        clampToActiveBounds(xAbs, yAbs);
+        if (requestedX != xAbs || requestedY != yAbs) {
+            LOG((CLOG_DEBUG2
+                "uhid: clamp relative cursor delta=%d,%d requested=%d,%d clamped=%d,%d bounds=%d,%d %dx%d",
+                dx, dy, requestedX, requestedY, xAbs, yAbs,
+                m_activeX, m_activeY, m_activeW, m_activeH));
+        }
+        m_cursorX = xAbs;
+        m_cursorY = yAbs;
+        m_uhidServer->mouseMoveAbsolute(xAbs, yAbs);
+        writeDebugStatus("relative");
     }
 
     void mouseWheel(SInt32 xDelta, SInt32 yDelta) override
@@ -177,9 +299,210 @@ public:
     }
 
 private:
+    bool contains(SInt32 x, SInt32 y,
+                  SInt32 rx, SInt32 ry, SInt32 rw, SInt32 rh) const
+    {
+        return (rw > 0 && rh > 0 &&
+                x >= rx && y >= ry &&
+                x < rx + rw && y < ry + rh);
+    }
+
+    bool isCurrentBounds(SInt32 x, SInt32 y, SInt32 w, SInt32 h) const
+    {
+        return (m_hasActiveBounds &&
+                m_activeX == x && m_activeY == y &&
+                m_activeW == w && m_activeH == h);
+    }
+
+    void fallbackToShapeBounds()
+    {
+        if (!m_screens.empty()) {
+            LOG((CLOG_WARN
+                "uhid: refused host-wide fallback while monitor list is available count=%lu",
+                static_cast<unsigned long>(m_screens.size())));
+            return;
+        }
+
+        SInt32 x = 0;
+        SInt32 y = 0;
+        SInt32 w = 0;
+        SInt32 h = 0;
+        m_screen->getShape(x, y, w, h);
+        if (w > 0 && h > 0) {
+            LOG((CLOG_WARN
+                "uhid: falling back to host shape bounds=%d,%d %dx%d; monitor edge blocking needs physical monitor detection",
+                x, y, w, h));
+            setActiveBounds(x, y, w, h);
+        }
+    }
+
+    void setActiveBounds(SInt32 x, SInt32 y, SInt32 w, SInt32 h)
+    {
+        if (w <= 0 || h <= 0) {
+            return;
+        }
+
+        if (!isCurrentBounds(x, y, w, h)) {
+            LOG((CLOG_INFO "uhid: active monitor bounds=%d,%d %dx%d",
+                x, y, w, h));
+        }
+
+        m_activeX = x;
+        m_activeY = y;
+        m_activeW = w;
+        m_activeH = h;
+        m_hasActiveBounds = true;
+    }
+
+    void getCursorPos(SInt32& x, SInt32& y)
+    {
+        m_cursorPositionProvider->getCursorPos(x, y);
+        LOG((CLOG_INFO "uhid: current cursor position x=%d y=%d", x, y));
+        m_cursorX = x;
+        m_cursorY = y;
+        writeDebugStatus("getCursorPos");
+    }
+
+    void softSetCursorPos(SInt32 targetX, SInt32 targetY, const char* reason)
+    {
+        const SoftCursorPositioner::Result result =
+            SoftCursorPositioner::moveTo(
+                *m_cursorPositionProvider, *m_cursorMotionSink, targetX, targetY);
+
+        LOG((CLOG_DEBUG2
+            "uhid: soft set cursor reason=%s current=%d,%d target=%d,%d delta=%d,%d bounds=%d,%d %dx%d",
+            reason,
+            result.m_currentX, result.m_currentY,
+            result.m_targetX, result.m_targetY,
+            result.m_deltaX, result.m_deltaY,
+            m_activeX, m_activeY, m_activeW, m_activeH));
+
+        m_cursorX = result.m_targetX;
+        m_cursorY = result.m_targetY;
+        writeDebugStatus(reason);
+    }
+
+    void writeDebugStatus(const char* eventName) const
+    {
+        const std::string path = uhidDebugStatusPath();
+        if (path.empty()) {
+            return;
+        }
+
+        FILE* file = fopen(path.c_str(), "w");
+        if (file == NULL) {
+            return;
+        }
+
+        fprintf(file,
+            "OK x=%d y=%d hasBounds=%d bounds=%d,%d %dx%d event=%s\n",
+            m_cursorX,
+            m_cursorY,
+            m_hasActiveBounds ? 1 : 0,
+            m_activeX,
+            m_activeY,
+            m_activeW,
+            m_activeH,
+            eventName != NULL ? eventName : "unknown");
+        fclose(file);
+    }
+
+    void updateActiveBoundsForPoint(SInt32 x, SInt32 y)
+    {
+        if (m_screens.empty()) {
+            refreshScreens();
+        }
+
+        for (std::vector<ClientScreenInfo>::const_iterator it = m_screens.begin();
+             it != m_screens.end(); ++it) {
+            if (contains(x, y, it->m_x, it->m_y, it->m_w, it->m_h)) {
+                setActiveBounds(it->m_x, it->m_y, it->m_w, it->m_h);
+                return;
+            }
+        }
+
+        if (!m_screens.empty()) {
+            std::vector<ClientScreenInfo>::const_iterator best = m_screens.begin();
+            SInt32 bestDistance = edgeDistanceToScreen(x, y, *best);
+            for (std::vector<ClientScreenInfo>::const_iterator it = m_screens.begin() + 1;
+                 it != m_screens.end(); ++it) {
+                const SInt32 distance = edgeDistanceToScreen(x, y, *it);
+                if (distance < bestDistance) {
+                    best = it;
+                    bestDistance = distance;
+                }
+            }
+            LOG((CLOG_WARN
+                "uhid: enter point %d,%d did not hit a monitor; using nearest monitor=%s bounds=%d,%d %dx%d distance=%d",
+                x, y, best->m_id.c_str(), best->m_x, best->m_y, best->m_w, best->m_h,
+                bestDistance));
+            setActiveBounds(best->m_x, best->m_y, best->m_w, best->m_h);
+            return;
+        }
+
+        if (!m_hasActiveBounds) {
+            fallbackToShapeBounds();
+        }
+    }
+
+    void refreshScreens()
+    {
+        m_screen->getScreens(m_screens);
+        LOG((CLOG_INFO "uhid: detected monitor count=%lu",
+            static_cast<unsigned long>(m_screens.size())));
+        for (std::vector<ClientScreenInfo>::const_iterator it = m_screens.begin();
+             it != m_screens.end(); ++it) {
+            LOG((CLOG_INFO "uhid: monitor id=%s bounds=%d,%d %dx%d",
+                it->m_id.c_str(), it->m_x, it->m_y, it->m_w, it->m_h));
+        }
+    }
+
+    SInt32 edgeDistanceToScreen(SInt32 x, SInt32 y, const ClientScreenInfo& screen) const
+    {
+        const SInt32 left = screen.m_x;
+        const SInt32 top = screen.m_y;
+        const SInt32 right = screen.m_x + screen.m_w - 1;
+        const SInt32 bottom = screen.m_y + screen.m_h - 1;
+        const SInt32 clampedX = std::max<SInt32>(left, std::min<SInt32>(right, x));
+        const SInt32 clampedY = std::max<SInt32>(top, std::min<SInt32>(bottom, y));
+        return std::abs(x - clampedX) + std::abs(y - clampedY);
+    }
+
+    void clampToActiveBounds(SInt32& x, SInt32& y)
+    {
+        if (!m_hasActiveBounds) {
+            fallbackToShapeBounds();
+        }
+        if (!m_hasActiveBounds) {
+            return;
+        }
+
+        static const SInt32 kGuardInset = 16;
+        const SInt32 minX = m_activeX + std::min<SInt32>(kGuardInset, std::max<SInt32>(0, (m_activeW - 1) / 2));
+        const SInt32 minY = m_activeY + std::min<SInt32>(kGuardInset, std::max<SInt32>(0, (m_activeH - 1) / 2));
+        const SInt32 maxX = m_activeX + m_activeW - 1 -
+            std::min<SInt32>(kGuardInset, std::max<SInt32>(0, (m_activeW - 1) / 2));
+        const SInt32 maxY = m_activeY + m_activeH - 1 -
+            std::min<SInt32>(kGuardInset, std::max<SInt32>(0, (m_activeH - 1) / 2));
+
+        x = std::max<SInt32>(minX, std::min<SInt32>(maxX, x));
+        y = std::max<SInt32>(minY, std::min<SInt32>(maxY, y));
+    }
+
+private:
     barrier::Screen* m_screen;
     bool m_started;
     std::unique_ptr<UhidServer> m_uhidServer;
+    std::unique_ptr<ICursorPositionProvider> m_cursorPositionProvider;
+    std::unique_ptr<ICursorMotionSink> m_cursorMotionSink;
+    std::vector<ClientScreenInfo> m_screens;
+    bool m_hasActiveBounds;
+    SInt32 m_activeX;
+    SInt32 m_activeY;
+    SInt32 m_activeW;
+    SInt32 m_activeH;
+    SInt32 m_cursorX;
+    SInt32 m_cursorY;
 };
 
 } // namespace
@@ -194,6 +517,10 @@ std::unique_ptr<IInputBackend> createInputBackend(barrier::Screen* screen, const
         }
 
         LOG((CLOG_WARN "uhid: failed to start Linux UHID input backend, using screen backend"));
+        writeUhidDebugStatusLine("ERR backend=uhid event=start-failed fallback=screen");
+    }
+    else {
+        writeUhidDebugStatusLine("ERR backend=screen event=uhid-disabled");
     }
 
     return std::unique_ptr<IInputBackend>(new ScreenInputBackend(screen));

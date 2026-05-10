@@ -366,6 +366,49 @@ TEST(ServerLayoutMappingTests, resolveObjectLayoutDestinationReturnsToPrimaryWhe
     EXPECT_EQ("Siloe:Siloe-1", resolved->m_id);
 }
 
+TEST(ServerLayoutMappingTests, directObjectLayoutDestinationRequiresExplicitLink)
+{
+    ScreenManager layout;
+    std::vector<Screen> layoutScreens;
+    layoutScreens.push_back(Screen("siloe:siloe-1", "siloe", "siloe-1",
+                                   0, 0, 100, 100));
+    layoutScreens.push_back(Screen("mamre:mamre-1", "mamre", "mamre-1",
+                                   0, 0, 100, 100));
+    layout.setScreens(layoutScreens);
+
+    EDirection direction = kNoDirection;
+    int globalX = 0;
+    int globalY = 0;
+
+    const Screen* resolved = resolveObjectLayoutDestinationForTest(
+        layout,
+        layoutScreens[1],
+        0, 0, 100, 100,
+        0, 0, 100, 100,
+        50, 50,
+        direction,
+        globalX, globalY);
+
+    EXPECT_EQ(kNoDirection, direction);
+    EXPECT_EQ(static_cast<const Screen*>(NULL), resolved);
+
+    layoutScreens[1].m_rightLink = "siloe-1";
+    layout.setScreens(layoutScreens);
+
+    resolved = resolveObjectLayoutDestinationForTest(
+        layout,
+        layoutScreens[1],
+        0, 0, 100, 100,
+        0, 0, 100, 100,
+        50, 50,
+        direction,
+        globalX, globalY);
+
+    EXPECT_EQ(kNoDirection, direction);
+    ASSERT_NE(static_cast<const Screen*>(NULL), resolved);
+    EXPECT_EQ("siloe:siloe-1", resolved->m_id);
+}
+
 TEST(ServerLayoutMappingTests, leftEdgeFromSiloeMapsToStackedMamreMonitor)
 {
     ScreenManager layout;

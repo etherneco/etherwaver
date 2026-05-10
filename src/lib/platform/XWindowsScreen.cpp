@@ -35,11 +35,224 @@
 
 #include <sstream>
 
+#include <array>
 #include <cstring>
 #include <cstdlib>
+#include <cstdio>
 #include <algorithm>
+#include <regex>
+#include <vector>
 
 static int xi_opcode;
+
+namespace {
+
+bool
+isWaylandSession()
+{
+    const char* waylandDisplay = std::getenv("WAYLAND_DISPLAY");
+    if (waylandDisplay != NULL && waylandDisplay[0] != '\0') {
+        return true;
+    }
+
+    const char* sessionType = std::getenv("XDG_SESSION_TYPE");
+    return (sessionType != NULL && std::strcmp(sessionType, "wayland") == 0);
+}
+
+std::string
+runMonitorCommand(const char* command)
+{
+    std::array<char, 4096> buffer;
+    std::string output;
+    FILE* pipe = popen(command, "r");
+    if (pipe == NULL) {
+        return output;
+    }
+
+    while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != NULL) {
+        output += buffer.data();
+    }
+
+    pclose(pipe);
+    return output;
+}
+
+bool
+hasInactiveMarker(const std::string& object)
+{
+    static const std::regex inactive("\"(?:active|enabled)\"\\s*:\\s*false");
+    return std::regex_search(object, inactive);
+}
+
+bool
+parseJsonMonitorObject(const std::string& object,
+                       const std::string& fallbackId,
+                       ClientScreenInfo& screen)
+{
+    if (hasInactiveMarker(object)) {
+        return false;
+    }
+
+    static const std::regex nameRe("\"(?:name|id|model)\"\\s*:\\s*\"([^\"]+)\"");
+    static const std::regex xRe("\"x\"\\s*:\\s*(-?[0-9]+)");
+    static const std::regex yRe("\"y\"\\s*:\\s*(-?[0-9]+)");
+    static const std::regex widthRe("\"width\"\\s*:\\s*([0-9]+)");
+    static const std::regex heightRe("\"height\"\\s*:\\s*([0-9]+)");
+
+    std::smatch nameMatch;
+    std::smatch xMatch;
+    std::smatch yMatch;
+    std::smatch widthMatch;
+    std::smatch heightMatch;
+
+    if (!std::regex_search(object, xMatch, xRe) ||
+        !std::regex_search(object, yMatch, yRe) ||
+        !std::regex_search(object, widthMatch, widthRe) ||
+        !std::regex_search(object, heightMatch, heightRe)) {
+        return false;
+    }
+
+    const SInt32 w = static_cast<SInt32>(std::strtol(widthMatch[1].str().c_str(), NULL, 10));
+    const SInt32 h = static_cast<SInt32>(std::strtol(heightMatch[1].str().c_str(), NULL, 10));
+    if (w <= 0 || h <= 0) {
+        return false;
+    }
+
+    std::string id = fallbackId;
+    if (std::regex_search(object, nameMatch, nameRe) && !nameMatch[1].str().empty()) {
+        id = nameMatch[1].str();
+    }
+
+    screen = ClientScreenInfo(
+        id,
+        static_cast<SInt32>(std::strtol(xMatch[1].str().c_str(), NULL, 10)),
+        static_cast<SInt32>(std::strtol(yMatch[1].str().c_str(), NULL, 10)),
+        w,
+        h);
+    return true;
+}
+
+void
+parseJsonMonitorList(const std::string& output,
+                     std::vector<ClientScreenInfo>& screens)
+{
+    int depth = 0;
+    std::string object;
+    unsigned long fallbackIndex = 1;
+
+    for (std::string::const_iterator it = output.begin(); it != output.end(); ++it) {
+        const char c = *it;
+        if (c == '{') {
+            if (depth == 0) {
+                object.clear();
+            }
+            ++depth;
+        }
+
+        if (depth > 0) {
+            object += c;
+        }
+
+        if (c == '}' && depth > 0) {
+            --depth;
+            if (depth == 0) {
+                std::ostringstream fallbackId;
+                fallbackId << "wayland-" << fallbackIndex++;
+
+                ClientScreenInfo screen;
+                if (parseJsonMonitorObject(object, fallbackId.str(), screen)) {
+                    screens.push_back(screen);
+                }
+                object.clear();
+            }
+        }
+    }
+}
+
+void
+parseKscreenDoctorOutput(const std::string& output,
+                         std::vector<ClientScreenInfo>& screens)
+{
+    static const std::regex outputRe("^Output:\\s*[0-9]+\\s+([^\\s]+).*$");
+    static const std::regex geometryRe(".*Geometry:\\s*(-?[0-9]+),(-?[0-9]+)\\s+([0-9]+)x([0-9]+).*$");
+
+    std::istringstream stream(output);
+    std::string line;
+    std::string currentId;
+    unsigned long fallbackIndex = 1;
+
+    while (std::getline(stream, line)) {
+        std::smatch match;
+        if (std::regex_match(line, match, outputRe)) {
+            currentId = match[1].str();
+            continue;
+        }
+
+        if (!currentId.empty() && std::regex_match(line, match, geometryRe)) {
+            const SInt32 w = static_cast<SInt32>(std::strtol(match[3].str().c_str(), NULL, 10));
+            const SInt32 h = static_cast<SInt32>(std::strtol(match[4].str().c_str(), NULL, 10));
+            if (w > 0 && h > 0) {
+                std::string id = currentId;
+                if (id.empty()) {
+                    std::ostringstream fallbackId;
+                    fallbackId << "wayland-" << fallbackIndex++;
+                    id = fallbackId.str();
+                }
+
+                screens.push_back(ClientScreenInfo(
+                    id,
+                    static_cast<SInt32>(std::strtol(match[1].str().c_str(), NULL, 10)),
+                    static_cast<SInt32>(std::strtol(match[2].str().c_str(), NULL, 10)),
+                    w,
+                    h));
+            }
+            currentId.clear();
+        }
+    }
+}
+
+void
+getWaylandScreens(std::vector<ClientScreenInfo>& screens)
+{
+    screens.clear();
+    if (!isWaylandSession()) {
+        return;
+    }
+
+    static bool s_loggedNoWaylandOutputs = false;
+
+    const char* jsonCommands[] = {
+        "hyprctl monitors -j 2>/dev/null",
+        "swaymsg -t get_outputs 2>/dev/null",
+        "wlr-randr --json 2>/dev/null",
+        "kscreen-doctor -j 2>/dev/null"
+    };
+
+    for (size_t i = 0; i < sizeof(jsonCommands) / sizeof(jsonCommands[0]); ++i) {
+        parseJsonMonitorList(runMonitorCommand(jsonCommands[i]), screens);
+        if (!screens.empty()) {
+            LOG((CLOG_INFO "wayland monitor fallback used command=%s count=%lu",
+                jsonCommands[i],
+                static_cast<unsigned long>(screens.size())));
+            return;
+        }
+    }
+
+    parseKscreenDoctorOutput(runMonitorCommand("kscreen-doctor -o 2>/dev/null"), screens);
+    if (!screens.empty()) {
+        LOG((CLOG_INFO "wayland monitor fallback used command=kscreen-doctor -o count=%lu",
+            static_cast<unsigned long>(screens.size())));
+        return;
+    }
+
+    if (!s_loggedNoWaylandOutputs) {
+        LOG((CLOG_WARN
+            "wayland monitor fallback found no outputs; install hyprctl, swaymsg, wlr-randr, or kscreen-doctor so waverc can report physical monitors"));
+        s_loggedNoWaylandOutputs = true;
+    }
+}
+
+} // namespace
 
 //
 // XWindowsScreen
@@ -485,6 +698,11 @@ void
 XWindowsScreen::getScreens(std::vector<ClientScreenInfo>& screens) const
 {
 	screens.clear();
+
+    getWaylandScreens(screens);
+    if (!screens.empty()) {
+        return;
+    }
 
 #if HAVE_X11_EXTENSIONS_XINERAMA_H
 	if (m_xinerama) {

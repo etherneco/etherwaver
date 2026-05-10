@@ -132,6 +132,7 @@ public slots:
         void logError();
         void bonjourInstallFinished();
         void showLogWindow();
+        void showDebugScreenInfo();
 
     protected:
         QSettings& settings() { return m_Settings; }
@@ -184,7 +185,9 @@ public slots:
         IpcClient m_IpcClient;
         QMenuBar* m_pMenuBar;
         QMenu* m_pMenuBarrier;
+        QMenu* m_pMenuDebug;
         QMenu* m_pMenuHelp;
+        QAction* m_pActionDebugScreenInfo;
         ZeroconfService* m_pZeroconfService;
         DataDownloader* m_pDataDownloader;
         QMessageBox* m_DownloadMessageBox;

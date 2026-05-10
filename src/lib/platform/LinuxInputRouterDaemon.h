@@ -25,6 +25,14 @@ public:
         int m_rescanIntervalMs;
         std::string m_logLevel;
         bool m_debugEvents;
+        bool m_cursorPositionServer;
+        std::string m_cursorPositionSocket;
+        bool m_cursorPositionOriginSet;
+        int m_cursorPositionOriginX;
+        int m_cursorPositionOriginY;
+        bool m_setCursorPosition;
+        int m_setCursorPositionX;
+        int m_setCursorPositionY;
 
         Config();
     };
@@ -47,6 +55,7 @@ private:
 
     bool parseArgs(int argc, char** argv);
     void printUsage(const char* argv0) const;
+    int runCursorPositionServer();
     bool start();
     void stop();
     void inputLoop();

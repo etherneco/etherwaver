@@ -147,6 +147,23 @@ layoutScreenDisplayName(const etherwaver::layout::Screen& screen)
     return !screen.m_name.empty() ? screen.m_name : screen.m_id;
 }
 
+static bool
+layoutLinkMatches(const std::string& link,
+                  const etherwaver::layout::Screen& target)
+{
+    return !link.empty() && (link == target.m_id || link == target.m_name);
+}
+
+static bool
+hasExplicitLayoutLink(const etherwaver::layout::Screen& source,
+                      const etherwaver::layout::Screen& target)
+{
+    return layoutLinkMatches(source.m_leftLink, target) ||
+           layoutLinkMatches(source.m_rightLink, target) ||
+           layoutLinkMatches(source.m_topLink, target) ||
+           layoutLinkMatches(source.m_bottomLink, target);
+}
+
 static IUhidEdgeTransitionHandler::Direction
 toUhidDirection(EDirection dir)
 {
@@ -1127,7 +1144,13 @@ etherwaver::server::resolveObjectLayoutDestinationForTest(
     }
 
     if (direction == kNoDirection) {
-        return layout.findScreenAt(globalX, globalY);
+        const etherwaver::layout::Screen* destination = layout.findScreenAt(globalX, globalY);
+        if (destination != NULL &&
+            destination->m_id != sourceScreen.m_id &&
+            !hasExplicitLayoutLink(sourceScreen, *destination)) {
+            return NULL;
+        }
+        return destination;
     }
 
     return layout.findScreenInDirection(sourceScreen.m_id, direction);
@@ -1684,6 +1707,32 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
         directionalDestination = m_screenLayout.findScreenInDirection(sourceScreen->m_id, direction);
         resolvedDestination = directionalDestination;
     }
+    else if (resolvedDestination != NULL &&
+             resolvedDestination->m_id != sourceScreen->m_id &&
+             !hasExplicitLayoutLink(*sourceScreen, *resolvedDestination)) {
+        std::ostringstream debug;
+        debug << "switch-rejected reason=no-explicit-layout-link"
+              << " activeClient=" << getName(m_active)
+              << " activeLayout=" << m_activeLayoutScreenId
+              << " sourceScreen=" << sourceScreen->m_id
+              << " destinationScreen=" << resolvedDestination->m_id
+              << " direction=" << safeDirectionName(direction)
+              << " local=" << x << "," << y
+              << " localScreen=" << ax << "," << ay << " " << aw << "x" << ah
+              << " global=" << globalX << "," << globalY;
+        appendObjectLayoutDebugLog(debug.str());
+        LOG((CLOG_INFO
+            "object-layout switch rejected sourceScreen=%s destination=%s reason=no-explicit-layout-link",
+            sourceScreen->m_id.c_str(),
+            resolvedDestination->m_id.c_str()));
+        const SInt32 holdX = clampInt(x, ax, ax + aw - 1);
+        const SInt32 holdY = clampInt(y, ay, ay + ah - 1);
+        m_active->mouseMove(holdX, holdY);
+        m_x = holdX;
+        m_y = holdY;
+        noSwitch(holdX, holdY);
+        return false;
+    }
 
     if (resolvedDestination == NULL || resolvedDestination->m_id == sourceScreen->m_id) {
         std::ostringstream debug;
@@ -1706,7 +1755,12 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
             (destinationScreen != NULL ? destinationScreen->m_id.c_str() : "<none>"),
             (directionalDestination != NULL ? directionalDestination->m_id.c_str() : "<none>"),
             (resolvedDestination != NULL ? resolvedDestination->m_id.c_str() : "<none>")));
-        noSwitch(clampInt(x, ax, ax + aw - 1), clampInt(y, ay, ay + ah - 1));
+        const SInt32 holdX = clampInt(x, ax, ax + aw - 1);
+        const SInt32 holdY = clampInt(y, ay, ay + ah - 1);
+        m_active->mouseMove(holdX, holdY);
+        m_x = holdX;
+        m_y = holdY;
+        noSwitch(holdX, holdY);
         return false;
     }
 
@@ -1727,6 +1781,12 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
             "object-layout switch rejected sourceScreen=%s resolvedDestination=%s reason=no-destination-client",
             sourceScreen->m_id.c_str(),
             resolvedDestination->m_id.c_str()));
+        const SInt32 holdX = clampInt(x, ax, ax + aw - 1);
+        const SInt32 holdY = clampInt(y, ay, ay + ah - 1);
+        m_active->mouseMove(holdX, holdY);
+        m_x = holdX;
+        m_y = holdY;
+        noSwitch(holdX, holdY);
         return false;
     }
 

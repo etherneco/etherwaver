@@ -22,7 +22,8 @@ public:
     };
 
     virtual ~IUhidEdgeTransitionHandler() {}
-    virtual void onTransition(Direction direction) = 0;
+    // Returns true if the transition was accepted, false if rejected (e.g. no link).
+    virtual bool onTransition(Direction direction) = 0;
 };
 
 class UhidEdgeTransitionService : public UhidServer::MouseMotionListener {
@@ -104,6 +105,7 @@ private:
     bool systemCursorLooksStuck(SInt32 dx, SInt32 dy) const;
     void maybeTrigger(IUhidEdgeTransitionHandler::Direction direction);
     void applyPostTransitionWarp(IUhidEdgeTransitionHandler::Direction direction);
+    void clampVirtualCursorToEdge(IUhidEdgeTransitionHandler::Direction direction);
     void logMotion(SInt32 dx, SInt32 dy, bool stuck) const;
     const char* directionName(IUhidEdgeTransitionHandler::Direction direction) const;
     SInt32 clampVirtual(SInt32 value) const;

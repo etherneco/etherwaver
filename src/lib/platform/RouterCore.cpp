@@ -386,10 +386,11 @@ RouterCore::routeEvent(const input_event& event, const std::string& devicePath)
     }
 }
 
-void
+bool
 RouterCore::onTransition(Direction direction)
 {
     switchSystem(direction);
+    return true;
 }
 
 void

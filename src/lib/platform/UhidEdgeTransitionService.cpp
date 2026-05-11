@@ -250,10 +250,18 @@ UhidEdgeTransitionService::maybeTrigger(IUhidEdgeTransitionHandler::Direction di
     m_topState.m_consecutive = 0;
     m_bottomState.m_consecutive = 0;
 
-    applyPostTransitionWarp(direction);
-
+    bool accepted = false;
     if (m_handler != NULL) {
-        m_handler->onTransition(direction);
+        accepted = m_handler->onTransition(direction);
+    }
+
+    if (accepted) {
+        applyPostTransitionWarp(direction);
+    }
+    else {
+        // No link in this direction: clamp virtual cursor to the screen edge so
+        // the user feels a wall, without bouncing it deep into the screen interior.
+        clampVirtualCursorToEdge(direction);
     }
 }
 
@@ -292,6 +300,32 @@ UhidEdgeTransitionService::applyPostTransitionWarp(IUhidEdgeTransitionHandler::D
 
     case IUhidEdgeTransitionHandler::kBottom:
         m_virtualY = topWarp;
+        break;
+    }
+}
+
+void
+UhidEdgeTransitionService::clampVirtualCursorToEdge(IUhidEdgeTransitionHandler::Direction direction)
+{
+    if (!hasUsableGeometry()) {
+        return;
+    }
+
+    switch (direction) {
+    case IUhidEdgeTransitionHandler::kLeft:
+        m_virtualX = m_geometry.m_x;
+        break;
+
+    case IUhidEdgeTransitionHandler::kRight:
+        m_virtualX = m_geometry.m_x + m_geometry.m_width - 1;
+        break;
+
+    case IUhidEdgeTransitionHandler::kTop:
+        m_virtualY = m_geometry.m_y;
+        break;
+
+    case IUhidEdgeTransitionHandler::kBottom:
+        m_virtualY = m_geometry.m_y + m_geometry.m_height - 1;
         break;
     }
 }

@@ -238,7 +238,7 @@ public:
     Returns true iff the switch was executed.
     */
     bool                switchToScreenName(const std::string& screenId);
-    void                onTransition(IUhidEdgeTransitionHandler::Direction direction);
+    bool                onTransition(IUhidEdgeTransitionHandler::Direction direction);
 
     //! Return true if received file size is valid
     bool                isReceivedFileSizeValid();
@@ -589,7 +589,6 @@ private:
     std::string         m_current_ip;
     std::unique_ptr<UhidTransitionHandler> m_uhidTransitionHandler;
     UhidEdgeTransitionService m_uhidEdgeTransitionService;
-    bool                m_uhidTransitionTriggered;
     Stopwatch           m_recentSwitchTimer;
     bool                m_recentSwitchArmed;
     BaseClientProxy*    m_recentSwitchSource;

@@ -758,11 +758,12 @@ public:
     {
     }
 
-    void onTransition(Direction direction) override
+    bool onTransition(Direction direction) override
     {
         if (m_server != NULL) {
-            m_server->onTransition(direction);
+            return m_server->onTransition(direction);
         }
+        return false;
     }
 
 private:
@@ -816,7 +817,6 @@ Server::Server(
 	m_httpListener(NULL),
 	m_running(false)
     , m_uhidTransitionHandler(new UhidTransitionHandler(this))
-    , m_uhidTransitionTriggered(false)
     , m_recentSwitchTimer(false)
     , m_recentSwitchArmed(false)
     , m_recentSwitchSource(NULL)
@@ -1080,7 +1080,6 @@ Server::Server() :
     m_running(false),
     m_uhidTransitionHandler(),
     m_uhidEdgeTransitionService(UhidEdgeTransitionService::Config()),
-    m_uhidTransitionTriggered(false),
     m_recentSwitchTimer(false),
     m_recentSwitchArmed(false),
     m_recentSwitchSource(NULL),
@@ -1972,10 +1971,10 @@ Server::trySwitchUsingUhidDirection(IUhidEdgeTransitionHandler::Direction direct
     return trySwitchUsingObjectLayout(edgeX, edgeY, true);
 }
 
-void
+bool
 Server::onTransition(IUhidEdgeTransitionHandler::Direction direction)
 {
-    m_uhidTransitionTriggered = trySwitchUsingUhidDirection(direction);
+    return trySwitchUsingUhidDirection(direction);
 }
 
 void

@@ -71,7 +71,7 @@ public:
     void stop();
 
     void routeEvent(const input_event& event, const std::string& devicePath);
-    void onTransition(Direction direction) override;
+    bool onTransition(Direction direction) override;
 
     void switchSystem(Direction direction);
     void injectAltTab();

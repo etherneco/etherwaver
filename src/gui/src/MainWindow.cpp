@@ -47,15 +47,14 @@
 #include <QFileDialog>
 #include <QDesktopServices>
 #include <QDialog>
-#include <QDialogButtonBox>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QLocalSocket>
+#include <QPlainTextEdit>
 #include <QScreen>
 #include <QScrollBar>
-#include <QTextEdit>
 #include <QVBoxLayout>
 
 #if defined(Q_OS_MAC)
@@ -1521,18 +1520,24 @@ void MainWindow::showDebugScreenInfo()
     QDialog dialog(this);
     dialog.setWindowTitle(tr("Debug - screen info"));
     dialog.setWindowFlags(dialog.windowFlags() | Qt::WindowStaysOnTopHint);
+    dialog.setAttribute(Qt::WA_TranslucentBackground, false);
+    dialog.setAutoFillBackground(true);
+    QPalette dialogPalette = dialog.palette();
+    dialogPalette.setColor(QPalette::Window, dialogPalette.color(QPalette::Base));
+    dialog.setPalette(dialogPalette);
     dialog.resize(620, 360);
 
     QVBoxLayout* layout = new QVBoxLayout(&dialog);
-    QTextEdit* textEdit = new QTextEdit(&dialog);
+    layout->setContentsMargins(8, 8, 8, 8);
+    QPlainTextEdit* textEdit = new QPlainTextEdit(&dialog);
     textEdit->setReadOnly(true);
-    textEdit->setLineWrapMode(QTextEdit::NoWrap);
-
-    QDialogButtonBox* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
-    connect(buttons, SIGNAL(rejected()), &dialog, SLOT(reject()));
+    textEdit->setLineWrapMode(QPlainTextEdit::NoWrap);
+    textEdit->setUndoRedoEnabled(false);
+    textEdit->setFrameShape(QFrame::StyledPanel);
+    textEdit->viewport()->setAutoFillBackground(true);
+    textEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     layout->addWidget(textEdit);
-    layout->addWidget(buttons);
 
     const QString cursorSocketPath = cursorPositionSocketPath();
     QFile::remove(cursorSocketPath);

@@ -28,9 +28,13 @@
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <string>
 #include <vector>
 
 #if defined(__linux__)
+#include <signal.h>
+#include <sys/types.h>
 #include <unistd.h>
 #endif
 
@@ -41,6 +45,17 @@ std::string uhidDebugStatusPath()
 #if defined(__linux__)
     char buffer[128];
     snprintf(buffer, sizeof(buffer), "/tmp/etherwaver-uhid-cursor-%ld.status", static_cast<long>(getuid()));
+    return buffer;
+#else
+    return "";
+#endif
+}
+
+std::string debugBoundsPidPath()
+{
+#if defined(__linux__)
+    char buffer[128];
+    snprintf(buffer, sizeof(buffer), "/tmp/etherwaver-debug-bounds-%ld.pid", static_cast<long>(getuid()));
     return buffer;
 #else
     return "";
@@ -61,6 +76,194 @@ void writeUhidDebugStatusLine(const char* line)
 
     fprintf(file, "%s\n", line != NULL ? line : "unavailable");
     fclose(file);
+}
+
+bool debugBoundsOverlayEnabled()
+{
+    const char* value = getenv("ETHERWAVER_DEBUG_BOUNDS_OVERLAY");
+    if (value == NULL || value[0] == '\0') {
+        return true;
+    }
+
+    return strcmp(value, "0") != 0 &&
+           strcmp(value, "false") != 0 &&
+           strcmp(value, "FALSE") != 0;
+}
+
+std::string executableDir()
+{
+#if defined(__linux__)
+    char buffer[4096];
+    const ssize_t length = readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
+    if (length <= 0) {
+        return "";
+    }
+
+    buffer[length] = '\0';
+    std::string path(buffer);
+    const std::string::size_type slash = path.find_last_of('/');
+    return slash == std::string::npos ? "" : path.substr(0, slash);
+#else
+    return "";
+#endif
+}
+
+std::string debugBoundsHelperPath()
+{
+    const char* configured = getenv("ETHERWAVER_DEBUG_BOUNDS_HELPER");
+    if (configured != NULL && configured[0] != '\0') {
+        return configured;
+    }
+
+    const std::string dir = executableDir();
+    if (!dir.empty()) {
+        return dir + "/etherwaver-debug-bounds";
+    }
+
+    return "etherwaver-debug-bounds";
+}
+
+void preserveEnvironmentValue(const char* name, std::string& value)
+{
+    const char* current = getenv(name);
+    value = current != NULL ? current : "";
+}
+
+void restoreEnvironmentValue(const char* name, const std::string& value)
+{
+    if (!value.empty()) {
+        setenv(name, value.c_str(), 1);
+    }
+}
+
+void useCleanDebugBoundsEnvironment()
+{
+#if defined(__linux__)
+    std::string home;
+    std::string user;
+    std::string logname;
+    std::string display;
+    std::string xauthority;
+    std::string xdgRuntimeDir;
+    std::string dbusSessionBusAddress;
+
+    preserveEnvironmentValue("HOME", home);
+    preserveEnvironmentValue("USER", user);
+    preserveEnvironmentValue("LOGNAME", logname);
+    preserveEnvironmentValue("DISPLAY", display);
+    preserveEnvironmentValue("XAUTHORITY", xauthority);
+    preserveEnvironmentValue("XDG_RUNTIME_DIR", xdgRuntimeDir);
+    preserveEnvironmentValue("DBUS_SESSION_BUS_ADDRESS", dbusSessionBusAddress);
+
+    clearenv();
+    setenv("PATH", "/usr/bin:/bin", 1);
+    setenv("QT_QPA_PLATFORM", "xcb", 1);
+
+    restoreEnvironmentValue("HOME", home);
+    restoreEnvironmentValue("USER", user);
+    restoreEnvironmentValue("LOGNAME", logname);
+    restoreEnvironmentValue("DISPLAY", display);
+    restoreEnvironmentValue("XAUTHORITY", xauthority);
+    restoreEnvironmentValue("XDG_RUNTIME_DIR", xdgRuntimeDir);
+    restoreEnvironmentValue("DBUS_SESSION_BUS_ADDRESS", dbusSessionBusAddress);
+#endif
+}
+
+void killDebugBoundsHelper()
+{
+#if defined(__linux__)
+    const std::string path = debugBoundsPidPath();
+    if (path.empty()) {
+        return;
+    }
+
+    FILE* file = fopen(path.c_str(), "r");
+    if (file == NULL) {
+        return;
+    }
+
+    long pid = 0;
+    const int parsed = fscanf(file, "%ld", &pid);
+    fclose(file);
+    unlink(path.c_str());
+    if (parsed == 1 && pid > 1) {
+        kill(static_cast<pid_t>(pid), SIGTERM);
+    }
+#endif
+}
+
+void writeDebugBoundsPid(pid_t pid)
+{
+#if defined(__linux__)
+    const std::string path = debugBoundsPidPath();
+    if (path.empty()) {
+        return;
+    }
+
+    FILE* file = fopen(path.c_str(), "w");
+    if (file == NULL) {
+        return;
+    }
+
+    fprintf(file, "%ld\n", static_cast<long>(pid));
+    fclose(file);
+#else
+    (void)pid;
+#endif
+}
+
+void startDebugBoundsHelper(SInt32 x, SInt32 y, SInt32 w, SInt32 h)
+{
+#if defined(__linux__)
+    if (!debugBoundsOverlayEnabled() || w <= 0 || h <= 0) {
+        return;
+    }
+
+    killDebugBoundsHelper();
+
+    char xArg[32];
+    char yArg[32];
+    char wArg[32];
+    char hArg[32];
+    snprintf(xArg, sizeof(xArg), "%d", x);
+    snprintf(yArg, sizeof(yArg), "%d", y);
+    snprintf(wArg, sizeof(wArg), "%d", w);
+    snprintf(hArg, sizeof(hArg), "%d", h);
+
+    const std::string helper = debugBoundsHelperPath();
+    const pid_t pid = fork();
+    if (pid < 0) {
+        LOG((CLOG_WARN "debug-bounds: failed to fork helper"));
+        return;
+    }
+
+    if (pid == 0) {
+        useCleanDebugBoundsEnvironment();
+        execl(helper.c_str(), helper.c_str(), xArg, yArg, wArg, hArg, static_cast<char*>(NULL));
+        execlp("etherwaver-debug-bounds", "etherwaver-debug-bounds",
+               xArg, yArg, wArg, hArg, static_cast<char*>(NULL));
+        _exit(127);
+    }
+
+    writeDebugBoundsPid(pid);
+    LOG((CLOG_INFO "debug-bounds: started helper pid=%ld bounds=%d,%d %dx%d",
+        static_cast<long>(pid), x, y, w, h));
+#else
+    (void)x;
+    (void)y;
+    (void)w;
+    (void)h;
+#endif
+}
+
+void showDebugBoundsOverlay(SInt32 x, SInt32 y, SInt32 w, SInt32 h)
+{
+    startDebugBoundsHelper(x, y, w, h);
+}
+
+void hideDebugBoundsOverlay()
+{
+    killDebugBoundsHelper();
 }
 
 class ScreenInputBackend : public IInputBackend {
@@ -188,6 +391,7 @@ public:
         , m_activeH(0)
         , m_cursorX(0)
         , m_cursorY(0)
+        , m_hasTrackedCursorPos(false)
     {
         assert(m_screen != NULL);
         m_started = m_uhidServer->start(deviceName);
@@ -201,14 +405,39 @@ public:
 
     void enter(SInt32 xAbs, SInt32 yAbs) override
     {
+        const SInt32 prevX = m_cursorX;
+        const SInt32 prevY = m_cursorY;
+        const bool useSelfTracked = m_hasTrackedCursorPos;
+
         m_uhidServer->clearInputState();
         m_hasActiveBounds = false;
         refreshScreens();
         updateActiveBoundsForPoint(xAbs, yAbs);
         clampToActiveBounds(xAbs, yAbs);
-        softSetCursorPos(xAbs, yAbs, "enter");
+
+        if (useSelfTracked) {
+            // Under Wayland, XQueryPointer (used by softSetCursorPos) returns stale data
+            // because the cursor is moved via UHID HID events — XWayland only sees cursor
+            // position when the pointer is over an XWayland surface. Using our own tracked
+            // position as the baseline gives the correct relative delta to the target.
+            m_uhidServer->primeAbsolutePosition(prevX, prevY);
+            m_uhidServer->mouseMoveAbsolute(xAbs, yAbs);
+            m_cursorX = xAbs;
+            m_cursorY = yAbs;
+            LOG((CLOG_DEBUG2
+                "uhid: soft set cursor reason=enter current=%d,%d target=%d,%d delta=%d,%d bounds=%d,%d %dx%d",
+                prevX, prevY, xAbs, yAbs, xAbs - prevX, yAbs - prevY,
+                m_activeX, m_activeY, m_activeW, m_activeH));
+        } else {
+            softSetCursorPos(xAbs, yAbs, "enter");
+            m_hasTrackedCursorPos = true;
+        }
+
         LOG((CLOG_INFO "uhid: enter cursor at %d,%d bounds=%d,%d %dx%d",
             xAbs, yAbs, m_activeX, m_activeY, m_activeW, m_activeH));
+        if (m_hasActiveBounds) {
+            showDebugBoundsOverlay(m_activeX, m_activeY, m_activeW, m_activeH);
+        }
         writeDebugStatus("enter");
     }
 
@@ -217,8 +446,9 @@ public:
         m_uhidServer->clearInputState();
         m_hasActiveBounds = false;
         m_screens.clear();
-        m_cursorX = 0;
-        m_cursorY = 0;
+        // Intentionally keep m_cursorX/m_cursorY: enter() uses them on re-entry
+        // to compute the correct relative-motion delta without querying XQueryPointer.
+        hideDebugBoundsOverlay();
         writeDebugStatus("leave");
     }
 
@@ -503,6 +733,7 @@ private:
     SInt32 m_activeH;
     SInt32 m_cursorX;
     SInt32 m_cursorY;
+    bool m_hasTrackedCursorPos;
 };
 
 } // namespace

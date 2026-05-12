@@ -20,3 +20,8 @@ add_subdirectory(barriers)
 if (WIN32 OR (UNIX AND NOT APPLE))
     add_subdirectory(waverd)
 endif()
+
+if (UNIX AND NOT APPLE AND BARRIER_BUILD_GUI)
+    add_subdirectory(debug-bounds)
+    add_dependencies(waverc etherwaver-debug-bounds)
+endif()

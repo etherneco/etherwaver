@@ -44,7 +44,6 @@ class QMenu;
 class QLineEdit;
 class QGroupBox;
 class QPushButton;
-class QTextEdit;
 class QComboBox;
 class QTabWidget;
 class QCheckBox;

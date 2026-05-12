@@ -129,12 +129,14 @@ void preserveEnvironmentValue(const char* name, std::string& value)
     value = current != NULL ? current : "";
 }
 
+#if defined(__linux__)
 void restoreEnvironmentValue(const char* name, const std::string& value)
 {
     if (!value.empty()) {
         setenv(name, value.c_str(), 1);
     }
 }
+#endif
 
 void useCleanDebugBoundsEnvironment()
 {
@@ -192,9 +194,9 @@ void killDebugBoundsHelper()
 #endif
 }
 
+#if defined(__linux__)
 void writeDebugBoundsPid(pid_t pid)
 {
-#if defined(__linux__)
     const std::string path = debugBoundsPidPath();
     if (path.empty()) {
         return;
@@ -207,10 +209,8 @@ void writeDebugBoundsPid(pid_t pid)
 
     fprintf(file, "%ld\n", static_cast<long>(pid));
     fclose(file);
-#else
-    (void)pid;
-#endif
 }
+#endif
 
 void startDebugBoundsHelper(SInt32 x, SInt32 y, SInt32 w, SInt32 h)
 {

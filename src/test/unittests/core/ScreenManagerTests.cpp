@@ -215,10 +215,10 @@ TEST(ScreenManagerTests, convertConfigToObjectLayout_preservesLogicalScreenConfi
 
     std::map<std::string, HostGeometry> hostGeometries;
     std::map<std::string, std::vector<ClientScreenInfo> > hostScreens;
-    hostScreens["KANAAN"].push_back(ClientScreenInfo("KANAAN-1", 0, 0, 1920, 1080));
-    hostScreens["KANAAN"].push_back(ClientScreenInfo("KANAAN-2", 0, 1080, 1920, 1080));
-    hostScreens["Siloe"].push_back(ClientScreenInfo("Siloe-1", 0, 0, 1920, 1080));
-    hostScreens["mamre"].push_back(ClientScreenInfo("mamre-1", 0, 0, 3840, 2160));
+    hostScreens["KANAAN"].push_back(ClientScreenInfo("screen0", 0, 0, 1920, 1080));
+    hostScreens["KANAAN"].push_back(ClientScreenInfo("screen1", 0, 1080, 1920, 1080));
+    hostScreens["Siloe"].push_back(ClientScreenInfo("screen0", 0, 0, 1920, 1080));
+    hostScreens["mamre"].push_back(ClientScreenInfo("screen0", 0, 0, 3840, 2160));
 
     ScreenManager manager = LayoutLoader::loadLayout(
         "/tmp/etherwaver-no-layout-file.json",
@@ -290,9 +290,9 @@ TEST(ScreenManagerTests, loadLayout_prefersLogicalScreenConfigOverJsonLayout)
 
     std::map<std::string, HostGeometry> hostGeometries;
     std::map<std::string, std::vector<ClientScreenInfo> > hostScreens;
-    hostScreens["Siloe"].push_back(ClientScreenInfo("Siloe-1", 0, 0, 1920, 1080));
-    hostScreens["mamre"].push_back(ClientScreenInfo("mamre-1", 0, 0, 3840, 2160));
-    hostScreens["KANAAN"].push_back(ClientScreenInfo("KANAAN-1", 0, 0, 1920, 1080));
+    hostScreens["Siloe"].push_back(ClientScreenInfo("screen0", 0, 0, 1920, 1080));
+    hostScreens["mamre"].push_back(ClientScreenInfo("screen0", 0, 0, 3840, 2160));
+    hostScreens["KANAAN"].push_back(ClientScreenInfo("screen0", 0, 0, 1920, 1080));
 
     ScreenManager manager =
         LayoutLoader::loadLayout(path, config, hostGeometries, hostScreens, "Siloe");

@@ -641,11 +641,50 @@ configUsesLogicalScreenNames(
     const std::map<std::string, std::vector<ClientScreenInfo> >& hostScreens,
     const std::map<std::string, etherwaver::layout::HostGeometry>& hostGeometries)
 {
+    std::map<std::string, int> indexedHosts;
+    bool foundIndexedConfigName = false;
+
     for (Config::const_iterator it = config.begin(); it != config.end(); ++it) {
+        const std::string baseName = baseHostName(*it);
+        if (baseName != *it) {
+            foundIndexedConfigName = true;
+            ++indexedHosts[baseName];
+        }
+
         std::string hostId;
         ClientScreenInfo screenInfo;
         if (getNamedScreenForConfigEntry(hostScreens, hostGeometries, *it,
                                          hostId, screenInfo)) {
+            return true;
+        }
+    }
+
+    for (std::map<std::string, int>::const_iterator it = indexedHosts.begin();
+         it != indexedHosts.end(); ++it) {
+        if (it->second > 1) {
+            return true;
+        }
+    }
+
+    if (!foundIndexedConfigName) {
+        return false;
+    }
+
+    for (Config::const_iterator it = config.begin(); it != config.end(); ++it) {
+        const std::string baseName = baseHostName(*it);
+        if (baseName == *it) {
+            continue;
+        }
+
+        const std::string resolvedScreensHost = resolveRuntimeHostId(hostScreens, baseName);
+        if (resolvedScreensHost != baseName || hostScreens.find(baseName) != hostScreens.end()) {
+            return true;
+        }
+
+        const std::string resolvedGeometryHost =
+            resolveRuntimeHostId(hostGeometries, baseName);
+        if (resolvedGeometryHost != baseName ||
+            hostGeometries.find(baseName) != hostGeometries.end()) {
             return true;
         }
     }

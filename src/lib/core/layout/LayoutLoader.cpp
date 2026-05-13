@@ -597,6 +597,62 @@ getLayoutScreensForHost(const etherwaver::layout::ScreenManager& manager,
     return screens;
 }
 
+static bool
+findClientScreenById(const std::vector<ClientScreenInfo>& screens,
+                     const std::string& screenId,
+                     ClientScreenInfo& screenInfo)
+{
+    for (std::vector<ClientScreenInfo>::const_iterator it = screens.begin();
+         it != screens.end(); ++it) {
+        if (it->m_id == screenId) {
+            screenInfo = *it;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool
+getNamedScreenForConfigEntry(
+    const std::map<std::string, std::vector<ClientScreenInfo> >& hostScreens,
+    const std::map<std::string, etherwaver::layout::HostGeometry>& hostGeometries,
+    const std::string& configName,
+    std::string& hostId,
+    ClientScreenInfo& screenInfo)
+{
+    hostId = baseHostName(configName);
+    if (hostId == configName) {
+        return false;
+    }
+
+    const std::vector<ClientScreenInfo> actualScreens =
+        getScreensForHost(hostScreens, hostGeometries, hostId);
+    if (findClientScreenById(actualScreens, configName, screenInfo)) {
+        return true;
+    }
+
+    return false;
+}
+
+static bool
+configUsesLogicalScreenNames(
+    const Config& config,
+    const std::map<std::string, std::vector<ClientScreenInfo> >& hostScreens,
+    const std::map<std::string, etherwaver::layout::HostGeometry>& hostGeometries)
+{
+    for (Config::const_iterator it = config.begin(); it != config.end(); ++it) {
+        std::string hostId;
+        ClientScreenInfo screenInfo;
+        if (getNamedScreenForConfigEntry(hostScreens, hostGeometries, *it,
+                                         hostId, screenInfo)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 struct HostScreenBounds {
     HostScreenBounds() :
         m_minX(0),
@@ -827,6 +883,140 @@ synthesizeDirectionalLinks(const Config& config,
 }
 
 static etherwaver::layout::ScreenManager
+convertConfigLogicalScreensToObjectLayout(
+    const Config& config,
+    const std::map<std::string, etherwaver::layout::HostGeometry>& hostGeometries,
+    const std::map<std::string, std::vector<ClientScreenInfo> >& hostScreens,
+    const std::string& primaryHostId)
+{
+    std::map<std::string, HostScreenBounds> screenBounds;
+    std::map<std::string, std::string> screenHosts;
+
+    for (Config::const_iterator it = config.begin(); it != config.end(); ++it) {
+        std::string hostId;
+        ClientScreenInfo screenInfo;
+        if (getNamedScreenForConfigEntry(hostScreens, hostGeometries, *it,
+                                         hostId, screenInfo)) {
+            std::vector<ClientScreenInfo> singleScreen;
+            singleScreen.push_back(screenInfo);
+            screenBounds[*it] = getHostScreenBounds(singleScreen);
+            screenHosts[*it] = hostId;
+            continue;
+        }
+
+        hostId = baseHostName(*it);
+        screenHosts[*it] = hostId;
+        screenBounds[*it] =
+            getHostScreenBounds(getScreensForHost(hostScreens, hostGeometries, hostId));
+    }
+
+    std::map<std::string, std::pair<int, int> > positions;
+    std::queue<std::string> pending;
+    std::vector<etherwaver::layout::Screen> screens;
+
+    std::string primaryScreenId = primaryHostId;
+    if (!config.isScreen(primaryScreenId)) {
+        const std::string basePrimaryHostId = baseHostName(primaryHostId);
+        for (Config::const_iterator it = config.begin(); it != config.end(); ++it) {
+            if (screenHosts[*it] == basePrimaryHostId) {
+                primaryScreenId = *it;
+                break;
+            }
+        }
+    }
+
+    if (!primaryScreenId.empty() && config.isScreen(primaryScreenId)) {
+        positions[primaryScreenId] = std::make_pair(0, 0);
+        pending.push(primaryScreenId);
+    }
+    else if (config.begin() != config.end()) {
+        const std::string first = *config.begin();
+        positions[first] = std::make_pair(0, 0);
+        pending.push(first);
+    }
+
+    while (!pending.empty()) {
+        const std::string current = pending.front();
+        pending.pop();
+
+        const std::pair<int, int> currentPos = positions[current];
+        static const EDirection directions[] = { kLeft, kRight, kTop, kBottom };
+        for (size_t i = 0; i < sizeof(directions) / sizeof(directions[0]); ++i) {
+            const EDirection direction = directions[i];
+            const std::string neighbor = config.getNeighbor(current, direction, 0.5f, NULL);
+            if (neighbor.empty() || positions.find(neighbor) != positions.end()) {
+                continue;
+            }
+
+            std::pair<int, int> nextPos = currentPos;
+            const HostScreenBounds currentBounds = screenBounds[current];
+            const HostScreenBounds neighborBounds = screenBounds[neighbor];
+            switch (direction) {
+            case kLeft:
+                nextPos.first -= neighborBounds.width();
+                break;
+            case kRight:
+                nextPos.first += currentBounds.width();
+                break;
+            case kTop:
+                nextPos.second -= neighborBounds.height();
+                break;
+            case kBottom:
+                nextPos.second += currentBounds.height();
+                break;
+            default:
+                break;
+            }
+
+            positions[neighbor] = nextPos;
+            pending.push(neighbor);
+        }
+    }
+
+    for (Config::const_iterator it = config.begin(); it != config.end(); ++it) {
+        const std::string configName = *it;
+        if (positions.find(configName) == positions.end()) {
+            int detachedX = 0;
+            for (std::map<std::string, std::pair<int, int> >::const_iterator pos = positions.begin();
+                 pos != positions.end(); ++pos) {
+                detachedX = std::max(detachedX,
+                                     pos->second.first + screenBounds[pos->first].width());
+            }
+            positions[configName] = std::make_pair(detachedX, 0);
+        }
+
+        const std::pair<int, int> pos = positions[configName];
+        const HostScreenBounds bounds = screenBounds[configName];
+        const std::string hostId = screenHosts[configName];
+        screens.push_back(etherwaver::layout::Screen(hostId + ":" + configName,
+                                                     hostId,
+                                                     configName,
+                                                     pos.first,
+                                                     pos.second,
+                                                     bounds.width(),
+                                                     bounds.height()));
+    }
+
+    for (size_t i = 0; i < screens.size(); ++i) {
+        static const EDirection directions[] = { kLeft, kRight, kTop, kBottom };
+        for (size_t d = 0; d < sizeof(directions) / sizeof(directions[0]); ++d) {
+            const EDirection direction = directions[d];
+            const std::string neighbor = config.getNeighbor(screens[i].m_name, direction, 0.5f, NULL);
+            if (neighbor.empty()) {
+                continue;
+            }
+
+            const std::string neighborHost = screenHosts[neighbor];
+            setDirectionalLink(screens[i], direction, neighborHost + ":" + neighbor);
+        }
+    }
+
+    etherwaver::layout::ScreenManager manager;
+    manager.setScreens(screens);
+    return manager;
+}
+
+static etherwaver::layout::ScreenManager
 normalizeJsonLayout(const etherwaver::layout::ScreenManager& manager,
                     const std::map<std::string, etherwaver::layout::HostGeometry>& hostGeometries,
                     const std::map<std::string, std::vector<ClientScreenInfo> >& hostScreens)
@@ -958,6 +1148,11 @@ LayoutLoader::convertConfigToObjectLayout(const Config& config,
                                           const std::map<std::string, std::vector<ClientScreenInfo> >& hostScreens,
                                           const std::string& primaryHostId)
 {
+    if (configUsesLogicalScreenNames(config, hostScreens, hostGeometries)) {
+        return convertConfigLogicalScreensToObjectLayout(
+            config, hostGeometries, hostScreens, primaryHostId);
+    }
+
     std::map<std::string, HostScreenBounds> hostBounds;
     for (Config::const_iterator it = config.begin(); it != config.end(); ++it) {
         hostBounds[*it] =

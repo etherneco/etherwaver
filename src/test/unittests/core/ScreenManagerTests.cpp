@@ -263,3 +263,59 @@ TEST(ScreenManagerTests, convertConfigToObjectLayout_preservesLogicalScreenConfi
     ASSERT_NE(static_cast<const Screen*>(NULL), downOfSiloe);
     EXPECT_EQ("KANAAN:KANAAN-2", downOfSiloe->m_id);
 }
+
+TEST(ScreenManagerTests, loadLayout_prefersLogicalScreenConfigOverJsonLayout)
+{
+    const std::string path = writeLayoutFile(
+        "{\"screens\":["
+        "{\"id\":\"Siloe-1\",\"host\":\"Siloe\",\"name\":\"Siloe-1\","
+        "\"x\":0,\"y\":0,\"width\":240,\"height\":140,"
+        "\"links\":{\"right\":\"KANAAN-1\"}},"
+        "{\"id\":\"mamre-1\",\"host\":\"mamre\",\"name\":\"mamre-1\","
+        "\"x\":240,\"y\":0,\"width\":240,\"height\":140,"
+        "\"links\":{\"left\":\"KANAAN-1\"}},"
+        "{\"id\":\"KANAAN-1\",\"host\":\"KANAAN\",\"name\":\"KANAAN-1\","
+        "\"x\":0,\"y\":-140,\"width\":240,\"height\":140,"
+        "\"links\":{\"down\":\"mamre-1\"}}"
+        "]}");
+
+    Config config;
+    ASSERT_TRUE(config.addScreen("Siloe-1"));
+    ASSERT_TRUE(config.addScreen("mamre-1"));
+    ASSERT_TRUE(config.addScreen("KANAAN-1"));
+    ASSERT_TRUE(config.connect("Siloe-1", kRight, 0.0f, 1.0f, "mamre-1", 0.0f, 1.0f));
+    ASSERT_TRUE(config.connect("mamre-1", kLeft, 0.0f, 1.0f, "Siloe-1", 0.0f, 1.0f));
+    ASSERT_TRUE(config.connect("Siloe-1", kTop, 0.0f, 1.0f, "KANAAN-1", 0.0f, 1.0f));
+    ASSERT_TRUE(config.connect("KANAAN-1", kBottom, 0.0f, 1.0f, "Siloe-1", 0.0f, 1.0f));
+
+    std::map<std::string, HostGeometry> hostGeometries;
+    std::map<std::string, std::vector<ClientScreenInfo> > hostScreens;
+    hostScreens["Siloe"].push_back(ClientScreenInfo("Siloe-1", 0, 0, 1920, 1080));
+    hostScreens["mamre"].push_back(ClientScreenInfo("mamre-1", 0, 0, 3840, 2160));
+    hostScreens["KANAAN"].push_back(ClientScreenInfo("KANAAN-1", 0, 0, 1920, 1080));
+
+    ScreenManager manager =
+        LayoutLoader::loadLayout(path, config, hostGeometries, hostScreens, "Siloe");
+
+    std::remove(path.c_str());
+
+    const std::vector<Screen>& screens = manager.getScreens();
+    ASSERT_EQ(3u, screens.size());
+
+    const Screen* siloe = manager.getScreen("Siloe:Siloe-1");
+    ASSERT_NE(static_cast<const Screen*>(NULL), siloe);
+    EXPECT_EQ("Siloe", siloe->m_hostId);
+    EXPECT_EQ("Siloe-1", siloe->m_name);
+
+    const Screen* rightOfSiloe = manager.findScreenInDirection("Siloe:Siloe-1", kRight);
+    ASSERT_NE(static_cast<const Screen*>(NULL), rightOfSiloe);
+    EXPECT_EQ("mamre:mamre-1", rightOfSiloe->m_id);
+
+    const Screen* leftOfMamre = manager.findScreenInDirection("mamre:mamre-1", kLeft);
+    ASSERT_NE(static_cast<const Screen*>(NULL), leftOfMamre);
+    EXPECT_EQ("Siloe:Siloe-1", leftOfMamre->m_id);
+
+    const Screen* topOfSiloe = manager.findScreenInDirection("Siloe:Siloe-1", kTop);
+    ASSERT_NE(static_cast<const Screen*>(NULL), topOfSiloe);
+    EXPECT_EQ("KANAAN:KANAAN-1", topOfSiloe->m_id);
+}

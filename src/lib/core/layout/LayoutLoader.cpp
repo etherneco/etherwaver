@@ -847,6 +847,62 @@ setDirectionalLink(etherwaver::layout::Screen& screen,
     }
 }
 
+static etherwaver::layout::Screen*
+findLayoutScreenByConfigName(std::vector<etherwaver::layout::Screen>& screens,
+                             const std::string& configName)
+{
+    for (std::vector<etherwaver::layout::Screen>::iterator it = screens.begin();
+         it != screens.end(); ++it) {
+        if (it->m_name == configName || it->m_id == configName) {
+            return &(*it);
+        }
+    }
+
+    const std::string configBaseName = baseHostName(configName);
+    for (std::vector<etherwaver::layout::Screen>::iterator it = screens.begin();
+         it != screens.end(); ++it) {
+        if (it->m_hostId == configBaseName &&
+            (it->m_name == configName ||
+             it->m_id == configBaseName + ":" + configName)) {
+            return &(*it);
+        }
+    }
+
+    return NULL;
+}
+
+static void
+applyConfigLinksToScreens(const Config& config,
+                          std::vector<etherwaver::layout::Screen>& screens)
+{
+    static const EDirection directions[] = { kLeft, kRight, kTop, kBottom };
+
+    for (Config::const_iterator it = config.begin(); it != config.end(); ++it) {
+        etherwaver::layout::Screen* source =
+            findLayoutScreenByConfigName(screens, *it);
+        if (source == NULL) {
+            continue;
+        }
+
+        for (size_t i = 0; i < sizeof(directions) / sizeof(directions[0]); ++i) {
+            const EDirection direction = directions[i];
+            const std::string neighbor =
+                config.getNeighbor(*it, direction, 0.5f, NULL);
+            if (neighbor.empty()) {
+                continue;
+            }
+
+            etherwaver::layout::Screen* destination =
+                findLayoutScreenByConfigName(screens, neighbor);
+            if (destination == NULL) {
+                continue;
+            }
+
+            setDirectionalLink(*source, direction, destination->m_id);
+        }
+    }
+}
+
 static void
 synthesizeDirectionalLinks(const Config& config,
                            std::vector<etherwaver::layout::Screen>& screens)
@@ -1018,6 +1074,7 @@ convertConfigLogicalScreensToObjectLayout(
 
 static etherwaver::layout::ScreenManager
 normalizeJsonLayout(const etherwaver::layout::ScreenManager& manager,
+                    const Config& config,
                     const std::map<std::string, etherwaver::layout::HostGeometry>& hostGeometries,
                     const std::map<std::string, std::vector<ClientScreenInfo> >& hostScreens)
 {
@@ -1087,6 +1144,8 @@ normalizeJsonLayout(const etherwaver::layout::ScreenManager& manager,
                                  hostLayoutScreens.end());
     }
 
+    applyConfigLinksToScreens(config, normalizedScreens);
+
     etherwaver::layout::ScreenManager normalized;
     normalized.setScreens(normalizedScreens);
     return normalized;
@@ -1120,9 +1179,15 @@ LayoutLoader::loadLayout(const std::string& layoutPath,
                          const std::map<std::string, std::vector<ClientScreenInfo> >& hostScreens,
                          const std::string& primaryHostId)
 {
+    if (configUsesLogicalScreenNames(config, hostScreens, hostGeometries)) {
+        return convertConfigLogicalScreensToObjectLayout(
+            config, hostGeometries, hostScreens, primaryHostId);
+    }
+
     std::ifstream stream(layoutPath.c_str());
     if (stream.good()) {
-        return normalizeJsonLayout(loadJsonLayout(layoutPath), hostGeometries, hostScreens);
+        return normalizeJsonLayout(loadJsonLayout(layoutPath), config,
+                                   hostGeometries, hostScreens);
     }
 
     return convertConfigToObjectLayout(config, hostGeometries, hostScreens, primaryHostId);

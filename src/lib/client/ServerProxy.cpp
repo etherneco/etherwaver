@@ -766,6 +766,7 @@ ServerProxy::mouseMove()
     // forward
     if (!ignore) {
         m_client->mouseMove(x, y);
+        queryInfo();
     }
 }
 
@@ -796,6 +797,7 @@ ServerProxy::mouseRelativeMove()
     // forward
     if (!ignore) {
         m_client->mouseRelativeMove(dx, dy);
+        queryInfo();
     }
 }
 

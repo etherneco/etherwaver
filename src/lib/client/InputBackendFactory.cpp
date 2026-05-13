@@ -429,6 +429,12 @@ public:
                 prevX, prevY, xAbs, yAbs, xAbs - prevX, yAbs - prevY,
                 m_activeX, m_activeY, m_activeW, m_activeH));
         } else {
+            // First enter since startup: XQueryPointer is still accurate because no
+            // UHID events have been sent yet. Use native platform warp first
+            // (XTestFakeMotionEvent) — works on X11 and Wayland with unsafe mode
+            // enabled. softSetCursorPos then reads back the actual position and
+            // issues a corrective UHID delta for any remaining error.
+            m_screen->mouseMove(xAbs, yAbs);
             softSetCursorPos(xAbs, yAbs, "enter");
             m_hasTrackedCursorPos = true;
         }

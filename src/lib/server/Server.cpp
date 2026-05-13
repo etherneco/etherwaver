@@ -3869,6 +3869,24 @@ Server::onMouseMoveSecondary(SInt32 dx, SInt32 dy)
 	const SInt32 xOld = m_x;
 	const SInt32 yOld = m_y;
 
+	if (usingObjectLayout()) {
+		SInt32 currentX = 0;
+		SInt32 currentY = 0;
+		m_active->getCursorPos(currentX, currentY);
+		if (currentX != m_x || currentY != m_y) {
+			std::ostringstream debug;
+			debug << "secondary-refresh-current-position"
+			      << " activeClient=" << getName(m_active)
+			      << " activeLayout=" << m_activeLayoutScreenId
+			      << " previous=" << m_x << "," << m_y
+			      << " current=" << currentX << "," << currentY
+			      << " delta=" << dx << "," << dy;
+			appendObjectLayoutDebugLog(debug.str());
+		}
+		m_x = currentX;
+		m_y = currentY;
+	}
+
 	// save last delta
 	m_xDelta2 = m_xDelta;
 	m_yDelta2 = m_yDelta;

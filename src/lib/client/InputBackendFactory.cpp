@@ -34,6 +34,8 @@
 
 #if defined(__linux__)
 #include <signal.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <sys/types.h>
 #include <unistd.h>
 #endif
@@ -59,6 +61,93 @@ std::string debugBoundsPidPath()
     return buffer;
 #else
     return "";
+#endif
+}
+
+std::string cursorPositionSocketPath()
+{
+#if defined(__linux__)
+    char buffer[128];
+    snprintf(buffer, sizeof(buffer), "/tmp/etherwaver-cursor-%ld.sock", static_cast<long>(getuid()));
+    return buffer;
+#else
+    return "";
+#endif
+}
+
+bool parseCursorServerResponse(const std::string& response, SInt32& x, SInt32& y)
+{
+    if (response.size() < 5 || response.compare(0, 3, "OK ") != 0) {
+        return false;
+    }
+
+    char* end = NULL;
+    const long parsedX = strtol(response.c_str() + 3, &end, 10);
+    if (end == response.c_str() + 3 || end == NULL || *end != ' ') {
+        return false;
+    }
+
+    const char* yStart = end + 1;
+    const long parsedY = strtol(yStart, &end, 10);
+    if (end == yStart) {
+        return false;
+    }
+
+    x = static_cast<SInt32>(parsedX);
+    y = static_cast<SInt32>(parsedY);
+    return true;
+}
+
+bool queryCursorPositionServer(SInt32& x, SInt32& y)
+{
+#if defined(__linux__)
+    const std::string socketPath = cursorPositionSocketPath();
+    if (socketPath.empty()) {
+        return false;
+    }
+
+    const int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (fd < 0) {
+        return false;
+    }
+
+    struct timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 120000;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+
+    sockaddr_un address;
+    memset(&address, 0, sizeof(address));
+    address.sun_family = AF_UNIX;
+    if (socketPath.size() >= sizeof(address.sun_path)) {
+        close(fd);
+        return false;
+    }
+    strncpy(address.sun_path, socketPath.c_str(), sizeof(address.sun_path) - 1);
+
+    if (connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0) {
+        close(fd);
+        return false;
+    }
+
+    std::string response;
+    char buffer[256];
+    while (true) {
+        const ssize_t n = read(fd, buffer, sizeof(buffer));
+        if (n > 0) {
+            response.append(buffer, static_cast<size_t>(n));
+            continue;
+        }
+        break;
+    }
+
+    close(fd);
+    return parseCursorServerResponse(response, x, y);
+#else
+    (void)x;
+    (void)y;
+    return false;
 #endif
 }
 
@@ -293,6 +382,12 @@ public:
         return true;
     }
 
+    bool getCursorPos(SInt32& x, SInt32& y) const override
+    {
+        m_screen->getCursorPos(x, y);
+        return true;
+    }
+
     void keyDown(KeyID id, KeyModifierMask mask, KeyButton button) override
     {
         m_screen->keyDown(id, mask, button);
@@ -354,6 +449,27 @@ private:
     barrier::Screen* m_screen;
 };
 
+class CursorServerPositionProvider : public ICursorPositionProvider {
+public:
+    explicit CursorServerPositionProvider(ICursorPositionProvider* fallback)
+        : m_fallback(fallback)
+    {
+        assert(m_fallback != NULL);
+    }
+
+    void getCursorPos(SInt32& x, SInt32& y) override
+    {
+        if (queryCursorPositionServer(x, y)) {
+            return;
+        }
+
+        m_fallback->getCursorPos(x, y);
+    }
+
+private:
+    ICursorPositionProvider* m_fallback;
+};
+
 class UhidCursorMotionSink : public ICursorMotionSink {
 public:
     explicit UhidCursorMotionSink(UhidServer* server)
@@ -382,7 +498,8 @@ public:
         : m_screen(screen)
         , m_started(false)
         , m_uhidServer(new UhidServer())
-        , m_cursorPositionProvider(new ScreenCursorPositionProvider(screen))
+        , m_screenCursorPositionProvider(new ScreenCursorPositionProvider(screen))
+        , m_cursorPositionProvider(new CursorServerPositionProvider(m_screenCursorPositionProvider.get()))
         , m_cursorMotionSink(new UhidCursorMotionSink(m_uhidServer.get()))
         , m_hasActiveBounds(false)
         , m_activeX(0)
@@ -391,7 +508,10 @@ public:
         , m_activeH(0)
         , m_cursorX(0)
         , m_cursorY(0)
+        , m_reportedCursorX(0)
+        , m_reportedCursorY(0)
         , m_hasTrackedCursorPos(false)
+        , m_ignoreUnexpectedMoveAfterEnter(false)
     {
         assert(m_screen != NULL);
         m_started = m_uhidServer->start(deviceName);
@@ -414,6 +534,7 @@ public:
         refreshScreens();
         updateActiveBoundsForPoint(xAbs, yAbs);
         clampToActiveBounds(xAbs, yAbs);
+        updateReportedCursorPos(xAbs, yAbs, xAbs, yAbs);
 
         if (useSelfTracked) {
             // Under Wayland, XQueryPointer (used by softSetCursorPos) returns stale data
@@ -424,6 +545,7 @@ public:
             m_uhidServer->mouseMoveAbsolute(xAbs, yAbs);
             m_cursorX = xAbs;
             m_cursorY = yAbs;
+            m_ignoreUnexpectedMoveAfterEnter = true;
             LOG((CLOG_DEBUG2
                 "uhid: soft set cursor reason=enter current=%d,%d target=%d,%d delta=%d,%d bounds=%d,%d %dx%d",
                 prevX, prevY, xAbs, yAbs, xAbs - prevX, yAbs - prevY,
@@ -437,6 +559,7 @@ public:
             m_screen->mouseMove(xAbs, yAbs);
             softSetCursorPos(xAbs, yAbs, "enter");
             m_hasTrackedCursorPos = true;
+            m_ignoreUnexpectedMoveAfterEnter = true;
         }
 
         LOG((CLOG_INFO "uhid: enter cursor at %d,%d bounds=%d,%d %dx%d",
@@ -452,6 +575,7 @@ public:
         m_uhidServer->clearInputState();
         m_hasActiveBounds = false;
         m_screens.clear();
+        m_ignoreUnexpectedMoveAfterEnter = false;
         // Intentionally keep m_cursorX/m_cursorY: enter() uses them on re-entry
         // to compute the correct relative-motion delta without querying XQueryPointer.
         hideDebugBoundsOverlay();
@@ -466,6 +590,13 @@ public:
     bool movesCursorAfterScreenEnter() const override
     {
         return false;
+    }
+
+    bool getCursorPos(SInt32& x, SInt32& y) const override
+    {
+        x = m_reportedCursorX;
+        y = m_reportedCursorY;
+        return m_hasTrackedCursorPos;
     }
 
     void keyDown(KeyID id, KeyModifierMask mask, KeyButton) override
@@ -497,6 +628,14 @@ public:
     {
         const SInt32 requestedX = xAbs;
         const SInt32 requestedY = yAbs;
+        if (shouldIgnoreUnexpectedMoveAfterEnter(requestedX, requestedY)) {
+            LOG((CLOG_INFO
+                "uhid: ignoring stale post-enter move requested=%d,%d activeBounds=%d,%d %dx%d",
+                requestedX, requestedY,
+                m_activeX, m_activeY, m_activeW, m_activeH));
+            writeDebugStatus("ignored-post-enter-move");
+            return;
+        }
         clampToActiveBounds(xAbs, yAbs);
         if (requestedX != xAbs || requestedY != yAbs) {
             LOG((CLOG_DEBUG2
@@ -504,8 +643,10 @@ public:
                 requestedX, requestedY, xAbs, yAbs,
                 m_activeX, m_activeY, m_activeW, m_activeH));
         }
+        updateReportedCursorPos(requestedX, requestedY, xAbs, yAbs);
         m_cursorX = xAbs;
         m_cursorY = yAbs;
+        m_ignoreUnexpectedMoveAfterEnter = false;
         m_uhidServer->mouseMoveAbsolute(xAbs, yAbs);
         writeDebugStatus("absolute");
     }
@@ -523,8 +664,10 @@ public:
                 dx, dy, requestedX, requestedY, xAbs, yAbs,
                 m_activeX, m_activeY, m_activeW, m_activeH));
         }
+        updateReportedCursorPos(requestedX, requestedY, xAbs, yAbs);
         m_cursorX = xAbs;
         m_cursorY = yAbs;
+        m_ignoreUnexpectedMoveAfterEnter = false;
         m_uhidServer->mouseMoveAbsolute(xAbs, yAbs);
         writeDebugStatus("relative");
     }
@@ -541,6 +684,20 @@ private:
         return (rw > 0 && rh > 0 &&
                 x >= rx && y >= ry &&
                 x < rx + rw && y < ry + rh);
+    }
+
+    bool shouldIgnoreUnexpectedMoveAfterEnter(SInt32 x, SInt32 y)
+    {
+        if (!m_ignoreUnexpectedMoveAfterEnter || !m_hasActiveBounds) {
+            return false;
+        }
+
+        if (contains(x, y, m_activeX, m_activeY, m_activeW, m_activeH)) {
+            return false;
+        }
+
+        m_ignoreUnexpectedMoveAfterEnter = false;
+        return true;
     }
 
     bool isCurrentBounds(SInt32 x, SInt32 y, SInt32 w, SInt32 h) const
@@ -613,9 +770,43 @@ private:
             result.m_deltaX, result.m_deltaY,
             m_activeX, m_activeY, m_activeW, m_activeH));
 
+        updateReportedCursorPos(result.m_targetX, result.m_targetY,
+            result.m_targetX, result.m_targetY);
         m_cursorX = result.m_targetX;
         m_cursorY = result.m_targetY;
         writeDebugStatus(reason);
+    }
+
+    void updateReportedCursorPos(
+        SInt32 requestedX, SInt32 requestedY, SInt32 actualX, SInt32 actualY)
+    {
+        if (!m_hasActiveBounds) {
+            m_reportedCursorX = actualX;
+            m_reportedCursorY = actualY;
+            return;
+        }
+
+        const SInt32 left = m_activeX;
+        const SInt32 top = m_activeY;
+        const SInt32 right = m_activeX + m_activeW - 1;
+        const SInt32 bottom = m_activeY + m_activeH - 1;
+
+        m_reportedCursorX = actualX;
+        m_reportedCursorY = actualY;
+
+        if (requestedX < actualX) {
+            m_reportedCursorX = left;
+        }
+        else if (requestedX > actualX) {
+            m_reportedCursorX = right;
+        }
+
+        if (requestedY < actualY) {
+            m_reportedCursorY = top;
+        }
+        else if (requestedY > actualY) {
+            m_reportedCursorY = bottom;
+        }
     }
 
     void writeDebugStatus(const char* eventName) const
@@ -631,9 +822,11 @@ private:
         }
 
         fprintf(file,
-            "OK x=%d y=%d hasBounds=%d bounds=%d,%d %dx%d event=%s\n",
+            "OK x=%d y=%d reported=%d,%d hasBounds=%d bounds=%d,%d %dx%d event=%s\n",
             m_cursorX,
             m_cursorY,
+            m_reportedCursorX,
+            m_reportedCursorY,
             m_hasActiveBounds ? 1 : 0,
             m_activeX,
             m_activeY,
@@ -729,6 +922,7 @@ private:
     barrier::Screen* m_screen;
     bool m_started;
     std::unique_ptr<UhidServer> m_uhidServer;
+    std::unique_ptr<ICursorPositionProvider> m_screenCursorPositionProvider;
     std::unique_ptr<ICursorPositionProvider> m_cursorPositionProvider;
     std::unique_ptr<ICursorMotionSink> m_cursorMotionSink;
     std::vector<ClientScreenInfo> m_screens;
@@ -739,7 +933,10 @@ private:
     SInt32 m_activeH;
     SInt32 m_cursorX;
     SInt32 m_cursorY;
+    SInt32 m_reportedCursorX;
+    SInt32 m_reportedCursorY;
     bool m_hasTrackedCursorPos;
+    bool m_ignoreUnexpectedMoveAfterEnter;
 };
 
 } // namespace

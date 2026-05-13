@@ -1423,14 +1423,6 @@ Server::getActiveLayoutScreen() const
         return screen;
     }
 
-    // On remote hosts, trust the last logical screen we explicitly switched
-    // to instead of re-deriving it from the cursor position. Reconstructing
-    // from the remote cursor can pick the wrong logical screen when the
-    // client's reported monitor arrangement differs from the object layout.
-    if (m_active != m_primaryClient) {
-        return getLayoutScreenForHost(getName(m_active));
-    }
-
     SInt32 ax = 0;
     SInt32 ay = 0;
     SInt32 aw = 0;
@@ -1442,6 +1434,11 @@ Server::getActiveLayoutScreen() const
         return positionScreen;
     }
 
+    // On remote hosts, a stale or missing active layout id should not force us
+    // back to host screen0: that can flip the interpreted transition edge and
+    // make enter() land on the wrong side of the destination monitor. Prefer
+    // the last known host-local fallback only after position reconstruction
+    // fails.
     return getLayoutScreenForHost(getName(m_active));
 }
 

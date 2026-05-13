@@ -247,7 +247,9 @@ Client::getScreens(std::vector<ClientScreenInfo>& screens) const
 void
 Client::getCursorPos(SInt32& x, SInt32& y) const
 {
-    m_screen->getCursorPos(x, y);
+    if (!m_inputBackend->getCursorPos(x, y)) {
+        m_screen->getCursorPos(x, y);
+    }
 }
 
 void

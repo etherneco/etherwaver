@@ -1725,6 +1725,17 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
         globalY = sourceScreen->m_y + sourceScreen->m_height;
     }
 
+    LOG((CLOG_INFO
+        "object-layout evaluate activeClient=%s activeLayout=%s sourceScreen=%s absolute=%s local=%d,%d localScreen=%d,%d %dx%d direction=%s global=%d,%d",
+        getName(m_active).c_str(),
+        m_activeLayoutScreenId.c_str(),
+        sourceScreen->m_id.c_str(),
+        absoluteMotion ? "yes" : "no",
+        x, y,
+        ax, ay, aw, ah,
+        safeDirectionName(direction),
+        globalX, globalY));
+
     const etherwaver::layout::Screen* destinationScreen =
         (direction == kNoDirection) ? m_screenLayout.findScreenAt(globalX, globalY) : NULL;
     const etherwaver::layout::Screen* resolvedDestination = destinationScreen;
@@ -1733,9 +1744,18 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
         directionalDestination = m_screenLayout.findScreenInDirection(sourceScreen->m_id, direction);
         resolvedDestination = directionalDestination;
     }
-    else if (resolvedDestination != NULL &&
-             resolvedDestination->m_id != sourceScreen->m_id &&
-             !hasExplicitLayoutLink(*sourceScreen, *resolvedDestination)) {
+
+    LOG((CLOG_INFO
+        "object-layout resolve sourceScreen=%s direction=%s directDestination=%s directionalDestination=%s resolvedDestination=%s",
+        sourceScreen->m_id.c_str(),
+        safeDirectionName(direction),
+        (destinationScreen != NULL ? destinationScreen->m_id.c_str() : "<none>"),
+        (directionalDestination != NULL ? directionalDestination->m_id.c_str() : "<none>"),
+        (resolvedDestination != NULL ? resolvedDestination->m_id.c_str() : "<none>")));
+    if (direction == kNoDirection &&
+        resolvedDestination != NULL &&
+        resolvedDestination->m_id != sourceScreen->m_id &&
+        !hasExplicitLayoutLink(*sourceScreen, *resolvedDestination)) {
         std::ostringstream debug;
         debug << "switch-rejected reason=no-explicit-layout-link"
               << " activeClient=" << getName(m_active)
@@ -1840,6 +1860,14 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
                        dx, dx + dw - 1);
     targetY = clampInt(applyTransitionInset(targetY, dy, dy + dh - 1, direction),
                        dy, dy + dh - 1);
+
+    LOG((CLOG_INFO
+        "object-layout target sourceScreen=%s destinationScreen=%s destinationRect=%d,%d %dx%d target=%d,%d direction=%s",
+        sourceScreen->m_id.c_str(),
+        resolvedDestination->m_id.c_str(),
+        dx, dy, dw, dh,
+        targetX, targetY,
+        safeDirectionName(direction)));
 
     if (!isSwitchOkay(destinationClient, direction, targetX, targetY,
                       xActive, yActive, resolvedDestination->m_id)) {

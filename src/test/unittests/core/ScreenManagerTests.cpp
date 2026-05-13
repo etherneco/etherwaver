@@ -139,3 +139,61 @@ TEST(ScreenManagerTests, loadLayout_preservesSavedMonitorLinks)
     EXPECT_EQ("host1:monitor2", host1Monitor2->m_id);
     EXPECT_EQ("host1", manager.getHostForScreen("host1:monitor2"));
 }
+
+TEST(ScreenManagerTests, convertConfigToObjectLayout_placesHostsEdgeToEdgeUsingActualSizes)
+{
+    Config config;
+    ASSERT_TRUE(config.addScreen("Siloe"));
+    ASSERT_TRUE(config.addScreen("mamre"));
+    ASSERT_TRUE(config.connect("Siloe", kRight, 0.0f, 1.0f, "mamre", 0.0f, 1.0f));
+    ASSERT_TRUE(config.connect("mamre", kLeft, 0.0f, 1.0f, "Siloe", 0.0f, 1.0f));
+
+    std::map<std::string, HostGeometry> hostGeometries;
+    std::map<std::string, std::vector<ClientScreenInfo> > hostScreens;
+    hostScreens["Siloe"].push_back(ClientScreenInfo("Siloe-1", 0, 0, 1920, 1080));
+    hostScreens["mamre"].push_back(ClientScreenInfo("mamre-1", 0, 0, 3840, 2160));
+
+    ScreenManager manager = LayoutLoader::loadLayout(
+        "/tmp/etherwaver-no-layout-file.json",
+        config, hostGeometries, hostScreens, "Siloe");
+
+    const Screen* siloe = manager.getScreen("Siloe:Siloe-1");
+    ASSERT_NE(static_cast<const Screen*>(NULL), siloe);
+    EXPECT_EQ(0, siloe->m_x);
+    EXPECT_EQ(0, siloe->m_y);
+    EXPECT_EQ(1920, siloe->m_width);
+    EXPECT_EQ(1080, siloe->m_height);
+
+    const Screen* mamre = manager.getScreen("mamre:mamre-1");
+    ASSERT_NE(static_cast<const Screen*>(NULL), mamre);
+    EXPECT_EQ(1920, mamre->m_x);
+    EXPECT_EQ(0, mamre->m_y);
+    EXPECT_EQ(3840, mamre->m_width);
+    EXPECT_EQ(2160, mamre->m_height);
+}
+
+TEST(ScreenManagerTests, convertConfigToObjectLayout_generatesDirectionalLinksAcrossHosts)
+{
+    Config config;
+    ASSERT_TRUE(config.addScreen("Siloe"));
+    ASSERT_TRUE(config.addScreen("mamre"));
+    ASSERT_TRUE(config.connect("Siloe", kRight, 0.0f, 1.0f, "mamre", 0.0f, 1.0f));
+    ASSERT_TRUE(config.connect("mamre", kLeft, 0.0f, 1.0f, "Siloe", 0.0f, 1.0f));
+
+    std::map<std::string, HostGeometry> hostGeometries;
+    std::map<std::string, std::vector<ClientScreenInfo> > hostScreens;
+    hostScreens["Siloe"].push_back(ClientScreenInfo("Siloe-1", 0, 0, 1920, 1080));
+    hostScreens["mamre"].push_back(ClientScreenInfo("mamre-1", 0, 0, 3840, 2160));
+
+    ScreenManager manager = LayoutLoader::loadLayout(
+        "/tmp/etherwaver-no-layout-file.json",
+        config, hostGeometries, hostScreens, "Siloe");
+
+    const Screen* fromSiloe = manager.findScreenInDirection("Siloe:Siloe-1", kRight);
+    ASSERT_NE(static_cast<const Screen*>(NULL), fromSiloe);
+    EXPECT_EQ("mamre:mamre-1", fromSiloe->m_id);
+
+    const Screen* fromMamre = manager.findScreenInDirection("mamre:mamre-1", kLeft);
+    ASSERT_NE(static_cast<const Screen*>(NULL), fromMamre);
+    EXPECT_EQ("Siloe:Siloe-1", fromMamre->m_id);
+}

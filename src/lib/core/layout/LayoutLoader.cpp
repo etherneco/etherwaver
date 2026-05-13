@@ -5,6 +5,7 @@
 #include <fstream>
 #include <algorithm>
 #include <map>
+#include <limits>
 #include <queue>
 #include <set>
 #include <sstream>
@@ -596,6 +597,235 @@ getLayoutScreensForHost(const etherwaver::layout::ScreenManager& manager,
     return screens;
 }
 
+struct HostScreenBounds {
+    HostScreenBounds() :
+        m_minX(0),
+        m_minY(0),
+        m_maxX(0),
+        m_maxY(0)
+    {
+    }
+
+    HostScreenBounds(int minX, int minY, int maxX, int maxY) :
+        m_minX(minX),
+        m_minY(minY),
+        m_maxX(maxX),
+        m_maxY(maxY)
+    {
+    }
+
+    int width() const { return std::max(1, m_maxX - m_minX); }
+    int height() const { return std::max(1, m_maxY - m_minY); }
+
+    int m_minX;
+    int m_minY;
+    int m_maxX;
+    int m_maxY;
+};
+
+static HostScreenBounds
+getHostScreenBounds(const std::vector<ClientScreenInfo>& screens)
+{
+    if (screens.empty()) {
+        return HostScreenBounds(0, 0, 1, 1);
+    }
+
+    int minX = screens.front().m_x;
+    int minY = screens.front().m_y;
+    int maxX = screens.front().m_x + screens.front().m_w;
+    int maxY = screens.front().m_y + screens.front().m_h;
+    for (std::vector<ClientScreenInfo>::const_iterator it = screens.begin();
+         it != screens.end(); ++it) {
+        minX = std::min(minX, static_cast<int>(it->m_x));
+        minY = std::min(minY, static_cast<int>(it->m_y));
+        maxX = std::max(maxX, static_cast<int>(it->m_x + it->m_w));
+        maxY = std::max(maxY, static_cast<int>(it->m_y + it->m_h));
+    }
+
+    return HostScreenBounds(minX, minY, maxX, maxY);
+}
+
+static int
+intervalOverlap(int a0, int a1, int b0, int b1)
+{
+    return std::max(0, std::min(a1, b1) - std::max(a0, b0));
+}
+
+static int
+edgeGap(const etherwaver::layout::Screen& source,
+        const etherwaver::layout::Screen& candidate,
+        EDirection direction)
+{
+    switch (direction) {
+    case kLeft:
+        return source.m_x - (candidate.m_x + candidate.m_width);
+
+    case kRight:
+        return candidate.m_x - (source.m_x + source.m_width);
+
+    case kTop:
+        return source.m_y - (candidate.m_y + candidate.m_height);
+
+    case kBottom:
+        return candidate.m_y - (source.m_y + source.m_height);
+
+    case kNoDirection:
+        break;
+    }
+
+    return std::numeric_limits<int>::max();
+}
+
+static int
+perpendicularOverlap(const etherwaver::layout::Screen& source,
+                     const etherwaver::layout::Screen& candidate,
+                     EDirection direction)
+{
+    switch (direction) {
+    case kLeft:
+    case kRight:
+        return intervalOverlap(source.m_y, source.m_y + source.m_height,
+                               candidate.m_y, candidate.m_y + candidate.m_height);
+
+    case kTop:
+    case kBottom:
+        return intervalOverlap(source.m_x, source.m_x + source.m_width,
+                               candidate.m_x, candidate.m_x + candidate.m_width);
+
+    case kNoDirection:
+        break;
+    }
+
+    return 0;
+}
+
+static int
+perpendicularCenterDistance(const etherwaver::layout::Screen& source,
+                            const etherwaver::layout::Screen& candidate,
+                            EDirection direction)
+{
+    if (direction == kLeft || direction == kRight) {
+        const int sourceCenter = source.m_y + source.m_height / 2;
+        const int candidateCenter = candidate.m_y + candidate.m_height / 2;
+        return std::abs(sourceCenter - candidateCenter);
+    }
+
+    const int sourceCenter = source.m_x + source.m_width / 2;
+    const int candidateCenter = candidate.m_x + candidate.m_width / 2;
+    return std::abs(sourceCenter - candidateCenter);
+}
+
+static etherwaver::layout::Screen*
+findBestDirectionalNeighbor(std::vector<etherwaver::layout::Screen>& screens,
+                            size_t sourceIndex,
+                            EDirection direction,
+                            const std::string& targetHostId,
+                            bool requireTouching)
+{
+    etherwaver::layout::Screen* best = NULL;
+    int bestGap = std::numeric_limits<int>::max();
+    int bestOverlap = -1;
+    int bestCenterDistance = std::numeric_limits<int>::max();
+
+    const etherwaver::layout::Screen& source = screens[sourceIndex];
+    for (size_t i = 0; i < screens.size(); ++i) {
+        if (i == sourceIndex) {
+            continue;
+        }
+
+        etherwaver::layout::Screen& candidate = screens[i];
+        if (!targetHostId.empty() && candidate.m_hostId != targetHostId) {
+            continue;
+        }
+
+        const int gap = edgeGap(source, candidate, direction);
+        if (gap < 0) {
+            continue;
+        }
+        if (requireTouching && gap != 0) {
+            continue;
+        }
+
+        const int overlap = perpendicularOverlap(source, candidate, direction);
+        const int centerDistance =
+            perpendicularCenterDistance(source, candidate, direction);
+        if (best == NULL ||
+            gap < bestGap ||
+            (gap == bestGap && overlap > bestOverlap) ||
+            (gap == bestGap && overlap == bestOverlap &&
+             centerDistance < bestCenterDistance)) {
+            best = &candidate;
+            bestGap = gap;
+            bestOverlap = overlap;
+            bestCenterDistance = centerDistance;
+        }
+    }
+
+    return best;
+}
+
+static void
+setDirectionalLink(etherwaver::layout::Screen& screen,
+                   EDirection direction,
+                   const std::string& targetId)
+{
+    switch (direction) {
+    case kLeft:
+        screen.m_leftLink = targetId;
+        break;
+
+    case kRight:
+        screen.m_rightLink = targetId;
+        break;
+
+    case kTop:
+        screen.m_topLink = targetId;
+        break;
+
+    case kBottom:
+        screen.m_bottomLink = targetId;
+        break;
+
+    case kNoDirection:
+        break;
+    }
+}
+
+static void
+synthesizeDirectionalLinks(const Config& config,
+                           std::vector<etherwaver::layout::Screen>& screens)
+{
+    static const EDirection directions[] = { kLeft, kRight, kTop, kBottom };
+
+    for (size_t i = 0; i < screens.size(); ++i) {
+        for (size_t d = 0; d < sizeof(directions) / sizeof(directions[0]); ++d) {
+            const EDirection direction = directions[d];
+
+            // Prefer real same-host monitor adjacency when multiple client
+            // screens exist on one machine.
+            etherwaver::layout::Screen* neighbor =
+                findBestDirectionalNeighbor(screens, i, direction,
+                                            screens[i].m_hostId, true);
+            if (neighbor != NULL) {
+                setDirectionalLink(screens[i], direction, neighbor->m_id);
+                continue;
+            }
+
+            const std::string neighborHost =
+                config.getNeighbor(screens[i].m_hostId, direction, 0.5f, NULL);
+            if (neighborHost.empty()) {
+                continue;
+            }
+
+            neighbor = findBestDirectionalNeighbor(
+                screens, i, direction, neighborHost, false);
+            if (neighbor != NULL) {
+                setDirectionalLink(screens[i], direction, neighbor->m_id);
+            }
+        }
+    }
+}
+
 static etherwaver::layout::ScreenManager
 normalizeJsonLayout(const etherwaver::layout::ScreenManager& manager,
                     const std::map<std::string, etherwaver::layout::HostGeometry>& hostGeometries,
@@ -728,6 +958,12 @@ LayoutLoader::convertConfigToObjectLayout(const Config& config,
                                           const std::map<std::string, std::vector<ClientScreenInfo> >& hostScreens,
                                           const std::string& primaryHostId)
 {
+    std::map<std::string, HostScreenBounds> hostBounds;
+    for (Config::const_iterator it = config.begin(); it != config.end(); ++it) {
+        hostBounds[*it] =
+            getHostScreenBounds(getScreensForHost(hostScreens, hostGeometries, *it));
+    }
+
     std::map<std::string, std::pair<int, int> > positions;
     std::queue<std::string> pending;
     std::vector<Screen> screens;
@@ -756,18 +992,20 @@ LayoutLoader::convertConfigToObjectLayout(const Config& config,
             }
 
             std::pair<int, int> nextPos = currentPos;
+            const HostScreenBounds currentBounds = hostBounds[current];
+            const HostScreenBounds neighborBounds = hostBounds[neighbor];
             switch (direction) {
             case kLeft:
-                --nextPos.first;
+                nextPos.first -= neighborBounds.width();
                 break;
             case kRight:
-                ++nextPos.first;
+                nextPos.first += currentBounds.width();
                 break;
             case kTop:
-                --nextPos.second;
+                nextPos.second -= neighborBounds.height();
                 break;
             case kBottom:
-                ++nextPos.second;
+                nextPos.second += currentBounds.height();
                 break;
             default:
                 break;
@@ -781,40 +1019,34 @@ LayoutLoader::convertConfigToObjectLayout(const Config& config,
     for (Config::const_iterator it = config.begin(); it != config.end(); ++it) {
         const std::string hostId = *it;
         if (positions.find(hostId) == positions.end()) {
-            positions[hostId] = std::make_pair(static_cast<int>(positions.size()), 0);
+            int detachedX = 0;
+            for (std::map<std::string, std::pair<int, int> >::const_iterator pos = positions.begin();
+                 pos != positions.end(); ++pos) {
+                detachedX = std::max(detachedX,
+                                     pos->second.first + hostBounds[pos->first].width());
+            }
+            positions[hostId] = std::make_pair(detachedX, 0);
         }
 
         const std::pair<int, int> grid = positions[hostId];
         const std::vector<ClientScreenInfo> hostScreenList =
             getScreensForHost(hostScreens, hostGeometries, hostId);
-
-        int minX = hostScreenList.front().m_x;
-        int minY = hostScreenList.front().m_y;
-        int maxX = hostScreenList.front().m_x + hostScreenList.front().m_w;
-        int maxY = hostScreenList.front().m_y + hostScreenList.front().m_h;
-        for (std::vector<ClientScreenInfo>::const_iterator screen = hostScreenList.begin();
-             screen != hostScreenList.end(); ++screen) {
-            minX = std::min(minX, static_cast<int>(screen->m_x));
-            minY = std::min(minY, static_cast<int>(screen->m_y));
-            maxX = std::max(maxX, static_cast<int>(screen->m_x + screen->m_w));
-            maxY = std::max(maxY, static_cast<int>(screen->m_y + screen->m_h));
-        }
-
-        const int hostWidth = maxX - minX;
-        const int hostHeight = maxY - minY;
-        const int hostOriginX = grid.first * hostWidth;
-        const int hostOriginY = grid.second * hostHeight;
+        const HostScreenBounds bounds = hostBounds[hostId];
+        const int hostOriginX = grid.first;
+        const int hostOriginY = grid.second;
 
         for (std::vector<ClientScreenInfo>::const_iterator screen = hostScreenList.begin();
              screen != hostScreenList.end(); ++screen) {
             const std::string screenId = hostId + ":" + screen->m_id;
             screens.push_back(Screen(screenId, hostId, screenId,
-                                     hostOriginX + (screen->m_x - minX),
-                                     hostOriginY + (screen->m_y - minY),
+                                     hostOriginX + (screen->m_x - bounds.m_minX),
+                                     hostOriginY + (screen->m_y - bounds.m_minY),
                                      screen->m_w,
                                      screen->m_h));
         }
     }
+
+    synthesizeDirectionalLinks(config, screens);
 
     ScreenManager manager;
     manager.setScreens(screens);

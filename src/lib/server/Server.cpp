@@ -192,6 +192,28 @@ hasExplicitLayoutLink(const etherwaver::layout::Screen& source,
            layoutLinkMatches(source.m_bottomLink, target);
 }
 
+static bool
+hasExplicitCrossHostLayoutLink(const etherwaver::layout::ScreenManager& layout,
+                               const etherwaver::layout::Screen& screen)
+{
+    const std::string links[] = {
+        screen.m_leftLink,
+        screen.m_rightLink,
+        screen.m_topLink,
+        screen.m_bottomLink
+    };
+
+    for (size_t i = 0; i < sizeof(links) / sizeof(links[0]); ++i) {
+        const etherwaver::layout::Screen* target =
+            layout.getScreenByIdOrName(links[i]);
+        if (target != NULL && target->m_hostId != screen.m_hostId) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static IUhidEdgeTransitionHandler::Direction
 toUhidDirection(EDirection dir)
 {
@@ -434,6 +456,15 @@ selectClientScreenForLayoutScreen(const etherwaver::layout::ScreenManager& layou
     }
 
     if (validScreenCount <= 1 && namedScreen != NULL) {
+        screenX = namedScreen->m_x;
+        screenY = namedScreen->m_y;
+        screenW = namedScreen->m_w;
+        screenH = namedScreen->m_h;
+        return true;
+    }
+
+    if (namedScreen != NULL &&
+        hasExplicitCrossHostLayoutLink(layout, layoutScreen)) {
         screenX = namedScreen->m_x;
         screenY = namedScreen->m_y;
         screenW = namedScreen->m_w;

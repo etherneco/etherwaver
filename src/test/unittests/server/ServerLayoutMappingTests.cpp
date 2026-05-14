@@ -229,6 +229,41 @@ TEST(ServerLayoutMappingTests, selectClientScreenForLayoutUsesNameWhenOnlyOneScr
     EXPECT_EQ(1800, h);
 }
 
+TEST(ServerLayoutMappingTests, selectClientScreenForCrossHostLinkPrefersExactMonitorName)
+{
+    ScreenManager layout;
+    std::vector<Screen> layoutScreens;
+    layoutScreens.push_back(Screen("KANAAN:KANAAN-1", "KANAAN", "KANAAN-1",
+                                   71, 32, 240, 140));
+    layoutScreens.back().m_rightLink = "Siloe-1";
+    layoutScreens.push_back(Screen("Siloe:Siloe-1", "Siloe", "Siloe-1",
+                                   293, 43, 240, 140));
+    layoutScreens.back().m_leftLink = "KANAAN-1";
+    layoutScreens.back().m_rightLink = "mamre-2";
+    layoutScreens.push_back(Screen("mamre:mamre-2", "mamre", "mamre-2",
+                                   518, 42, 240, 140));
+    layoutScreens.back().m_leftLink = "Siloe-1";
+    layoutScreens.push_back(Screen("mamre:mamre-1", "mamre", "mamre-1",
+                                   522, 167, 240, 140));
+    layout.setScreens(layoutScreens);
+
+    std::vector<ClientScreenInfo> clientScreens;
+    clientScreens.push_back(ClientScreenInfo("mamre-1", 0, 0, 1920, 1080));
+    clientScreens.push_back(ClientScreenInfo("mamre-2", 1920, 0, 1920, 1080));
+
+    SInt32 x = 0;
+    SInt32 y = 0;
+    SInt32 w = 0;
+    SInt32 h = 0;
+
+    ASSERT_TRUE(selectClientScreenForLayoutScreenForTest(
+        layout, clientScreens, layoutScreens[2], x, y, w, h));
+    EXPECT_EQ(1920, x);
+    EXPECT_EQ(0, y);
+    EXPECT_EQ(1920, w);
+    EXPECT_EQ(1080, h);
+}
+
 TEST(ServerLayoutMappingTests, jumpPositionForLogicalScreenMovesIntoTargetMonitorWhenSavedPositionIsOnAnotherMonitor)
 {
     ScreenManager layout;

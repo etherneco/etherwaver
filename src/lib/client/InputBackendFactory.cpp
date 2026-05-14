@@ -525,10 +525,6 @@ public:
 
     void enter(SInt32 xAbs, SInt32 yAbs) override
     {
-        const SInt32 prevX = m_cursorX;
-        const SInt32 prevY = m_cursorY;
-        const bool useSelfTracked = m_hasTrackedCursorPos;
-
         m_uhidServer->clearInputState();
         m_hasActiveBounds = false;
         refreshScreens();
@@ -536,11 +532,29 @@ public:
         clampToActiveBounds(xAbs, yAbs);
         updateReportedCursorPos(xAbs, yAbs, xAbs, yAbs);
 
-        if (useSelfTracked) {
+        const EdgeTarget edgeTarget = inferEdgeTarget(xAbs, yAbs);
+        if (edgeTarget != kNoEdgeTarget) {
+            // On Wayland the compositor only accepts relative UHID motion.  If
+            // our remembered absolute position is stale, a single relative
+            // delta can land on the opposite edge.  For edge transitions, first
+            // drive toward the destination edge, then move back to the inset
+            // target so "right of source" enters the left edge of the target.
+            forceEdgeEnterPosition(edgeTarget, xAbs, yAbs);
+            m_cursorX = xAbs;
+            m_cursorY = yAbs;
+            m_hasTrackedCursorPos = true;
+            m_ignoreUnexpectedMoveAfterEnter = true;
+            LOG((CLOG_INFO
+                "uhid: edge enter cursor target=%d,%d edge=%s bounds=%d,%d %dx%d",
+                xAbs, yAbs, edgeTargetName(edgeTarget),
+                m_activeX, m_activeY, m_activeW, m_activeH));
+        } else if (m_hasTrackedCursorPos) {
             // Under Wayland, XQueryPointer (used by softSetCursorPos) returns stale data
             // because the cursor is moved via UHID HID events — XWayland only sees cursor
             // position when the pointer is over an XWayland surface. Using our own tracked
             // position as the baseline gives the correct relative delta to the target.
+            const SInt32 prevX = m_cursorX;
+            const SInt32 prevY = m_cursorY;
             m_uhidServer->primeAbsolutePosition(prevX, prevY);
             m_uhidServer->mouseMoveAbsolute(xAbs, yAbs);
             m_cursorX = xAbs;
@@ -684,6 +698,117 @@ private:
         return (rw > 0 && rh > 0 &&
                 x >= rx && y >= ry &&
                 x < rx + rw && y < ry + rh);
+    }
+
+    enum EdgeTarget {
+        kNoEdgeTarget,
+        kLeftEdgeTarget,
+        kRightEdgeTarget,
+        kTopEdgeTarget,
+        kBottomEdgeTarget
+    };
+
+    const char* edgeTargetName(EdgeTarget edge) const
+    {
+        switch (edge) {
+        case kLeftEdgeTarget:
+            return "left";
+        case kRightEdgeTarget:
+            return "right";
+        case kTopEdgeTarget:
+            return "top";
+        case kBottomEdgeTarget:
+            return "bottom";
+        case kNoEdgeTarget:
+            break;
+        }
+
+        return "none";
+    }
+
+    EdgeTarget inferEdgeTarget(SInt32 x, SInt32 y) const
+    {
+        if (!m_hasActiveBounds || m_activeW <= 0 || m_activeH <= 0) {
+            return kNoEdgeTarget;
+        }
+
+        const SInt32 left = m_activeX;
+        const SInt32 right = m_activeX + m_activeW - 1;
+        const SInt32 top = m_activeY;
+        const SInt32 bottom = m_activeY + m_activeH - 1;
+        const SInt32 horizontalThreshold =
+            std::min<SInt32>(96, std::max<SInt32>(16, m_activeW / 8));
+        const SInt32 verticalThreshold =
+            std::min<SInt32>(96, std::max<SInt32>(16, m_activeH / 8));
+
+        EdgeTarget bestEdge = kNoEdgeTarget;
+        SInt32 bestDistance = std::max<SInt32>(horizontalThreshold, verticalThreshold) + 1;
+
+        const SInt32 leftDistance = std::abs(x - left);
+        if (leftDistance <= horizontalThreshold && leftDistance < bestDistance) {
+            bestDistance = leftDistance;
+            bestEdge = kLeftEdgeTarget;
+        }
+
+        const SInt32 rightDistance = std::abs(right - x);
+        if (rightDistance <= horizontalThreshold && rightDistance < bestDistance) {
+            bestDistance = rightDistance;
+            bestEdge = kRightEdgeTarget;
+        }
+
+        const SInt32 topDistance = std::abs(y - top);
+        if (topDistance <= verticalThreshold && topDistance < bestDistance) {
+            bestDistance = topDistance;
+            bestEdge = kTopEdgeTarget;
+        }
+
+        const SInt32 bottomDistance = std::abs(bottom - y);
+        if (bottomDistance <= verticalThreshold && bottomDistance < bestDistance) {
+            bestEdge = kBottomEdgeTarget;
+        }
+
+        return bestEdge;
+    }
+
+    void forceEdgeEnterPosition(EdgeTarget edge, SInt32 targetX, SInt32 targetY)
+    {
+        const SInt32 left = m_activeX;
+        const SInt32 right = m_activeX + m_activeW - 1;
+        const SInt32 top = m_activeY;
+        const SInt32 bottom = m_activeY + m_activeH - 1;
+
+        switch (edge) {
+        case kLeftEdgeTarget:
+            m_uhidServer->primeAbsolutePosition(right, targetY);
+            m_uhidServer->mouseMoveAbsolute(left, targetY);
+            m_uhidServer->primeAbsolutePosition(left, targetY);
+            m_uhidServer->mouseMoveAbsolute(targetX, targetY);
+            break;
+
+        case kRightEdgeTarget:
+            m_uhidServer->primeAbsolutePosition(left, targetY);
+            m_uhidServer->mouseMoveAbsolute(right, targetY);
+            m_uhidServer->primeAbsolutePosition(right, targetY);
+            m_uhidServer->mouseMoveAbsolute(targetX, targetY);
+            break;
+
+        case kTopEdgeTarget:
+            m_uhidServer->primeAbsolutePosition(targetX, bottom);
+            m_uhidServer->mouseMoveAbsolute(targetX, top);
+            m_uhidServer->primeAbsolutePosition(targetX, top);
+            m_uhidServer->mouseMoveAbsolute(targetX, targetY);
+            break;
+
+        case kBottomEdgeTarget:
+            m_uhidServer->primeAbsolutePosition(targetX, top);
+            m_uhidServer->mouseMoveAbsolute(targetX, bottom);
+            m_uhidServer->primeAbsolutePosition(targetX, bottom);
+            m_uhidServer->mouseMoveAbsolute(targetX, targetY);
+            break;
+
+        case kNoEdgeTarget:
+            break;
+        }
     }
 
     bool shouldIgnoreUnexpectedMoveAfterEnter(SInt32 x, SInt32 y)

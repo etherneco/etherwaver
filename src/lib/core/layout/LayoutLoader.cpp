@@ -692,6 +692,107 @@ configUsesLogicalScreenNames(
     return false;
 }
 
+static bool
+hasRuntimeScreensForHost(const std::map<std::string, std::vector<ClientScreenInfo> >& hostScreens,
+                         const std::string& hostId)
+{
+    const std::string resolvedHostId = resolveRuntimeHostId(hostScreens, hostId);
+    std::map<std::string, std::vector<ClientScreenInfo> >::const_iterator it =
+        hostScreens.find(resolvedHostId);
+    return it != hostScreens.end() && !it->second.empty();
+}
+
+static bool
+layoutScreenMatchesClientScreen(const etherwaver::layout::Screen& layoutScreen,
+                                const ClientScreenInfo& clientScreen)
+{
+    if (layoutScreen.m_name == clientScreen.m_id ||
+        layoutScreen.m_id == clientScreen.m_id) {
+        return true;
+    }
+
+    const std::string hostPrefix = layoutScreen.m_hostId + ":";
+    if (layoutScreen.m_id.compare(0, hostPrefix.size(), hostPrefix) == 0 &&
+        layoutScreen.m_id.substr(hostPrefix.size()) == clientScreen.m_id) {
+        return true;
+    }
+
+    return false;
+}
+
+static bool
+linkMatchesScreen(const std::string& link, const etherwaver::layout::Screen& screen)
+{
+    return !link.empty() && (link == screen.m_id || link == screen.m_name);
+}
+
+static bool
+isLinkedFromAnotherHost(const std::vector<etherwaver::layout::Screen>& screens,
+                        const etherwaver::layout::Screen& target)
+{
+    for (std::vector<etherwaver::layout::Screen>::const_iterator it = screens.begin();
+         it != screens.end(); ++it) {
+        if (it->m_hostId == target.m_hostId) {
+            continue;
+        }
+
+        if (linkMatchesScreen(it->m_leftLink, target) ||
+            linkMatchesScreen(it->m_rightLink, target) ||
+            linkMatchesScreen(it->m_topLink, target) ||
+            linkMatchesScreen(it->m_bottomLink, target)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool
+hasFirstScreenSuffix(const etherwaver::layout::Screen& screen)
+{
+    std::string baseName;
+    return isScreenIndexSuffix(screen.m_name, baseName) &&
+           screen.m_name.substr(baseName.size()) == "-1";
+}
+
+static bool
+screenLinkExists(const std::vector<etherwaver::layout::Screen>& screens,
+                 const std::string& link)
+{
+    if (link.empty()) {
+        return true;
+    }
+
+    for (std::vector<etherwaver::layout::Screen>::const_iterator it = screens.begin();
+         it != screens.end(); ++it) {
+        if (linkMatchesScreen(link, *it)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void
+clearMissingLink(const std::vector<etherwaver::layout::Screen>& screens, std::string& link)
+{
+    if (!screenLinkExists(screens, link)) {
+        link.clear();
+    }
+}
+
+static void
+clearLinksToMissingScreens(std::vector<etherwaver::layout::Screen>& screens)
+{
+    for (std::vector<etherwaver::layout::Screen>::iterator it = screens.begin();
+         it != screens.end(); ++it) {
+        clearMissingLink(screens, it->m_leftLink);
+        clearMissingLink(screens, it->m_rightLink);
+        clearMissingLink(screens, it->m_topLink);
+        clearMissingLink(screens, it->m_bottomLink);
+    }
+}
+
 struct HostScreenBounds {
     HostScreenBounds() :
         m_minX(0),
@@ -1178,12 +1279,61 @@ normalizeJsonLayout(const etherwaver::layout::ScreenManager& manager,
             continue;
         }
 
+        if (hasRuntimeScreensForHost(hostScreens, it->m_hostId) &&
+            actualHostScreens.size() < hostLayoutScreens.size()) {
+            std::vector<etherwaver::layout::Screen> retainedScreens;
+
+            for (std::vector<etherwaver::layout::Screen>::const_iterator layoutScreen =
+                     hostLayoutScreens.begin();
+                 layoutScreen != hostLayoutScreens.end(); ++layoutScreen) {
+                for (std::vector<ClientScreenInfo>::const_iterator actualScreen =
+                         actualHostScreens.begin();
+                     actualScreen != actualHostScreens.end(); ++actualScreen) {
+                    if (layoutScreenMatchesClientScreen(*layoutScreen, *actualScreen)) {
+                        retainedScreens.push_back(*layoutScreen);
+                        break;
+                    }
+                }
+            }
+
+            if (retainedScreens.empty() && actualHostScreens.size() == 1) {
+                for (std::vector<etherwaver::layout::Screen>::const_iterator layoutScreen =
+                         hostLayoutScreens.begin();
+                     layoutScreen != hostLayoutScreens.end(); ++layoutScreen) {
+                    if (isLinkedFromAnotherHost(originalScreens, *layoutScreen)) {
+                        retainedScreens.push_back(*layoutScreen);
+                    }
+                }
+            }
+
+            if (retainedScreens.empty() && actualHostScreens.size() == 1) {
+                for (std::vector<etherwaver::layout::Screen>::const_iterator layoutScreen =
+                         hostLayoutScreens.begin();
+                     layoutScreen != hostLayoutScreens.end(); ++layoutScreen) {
+                    if (hasFirstScreenSuffix(*layoutScreen)) {
+                        retainedScreens.push_back(*layoutScreen);
+                        break;
+                    }
+                }
+            }
+
+            if (retainedScreens.empty() && actualHostScreens.size() == 1) {
+                retainedScreens.push_back(hostLayoutScreens.front());
+            }
+
+            normalizedScreens.insert(normalizedScreens.end(),
+                                     retainedScreens.begin(),
+                                     retainedScreens.end());
+            continue;
+        }
+
         normalizedScreens.insert(normalizedScreens.end(),
                                  hostLayoutScreens.begin(),
                                  hostLayoutScreens.end());
     }
 
     applyConfigLinksToScreens(config, normalizedScreens);
+    clearLinksToMissingScreens(normalizedScreens);
 
     etherwaver::layout::ScreenManager normalized;
     normalized.setScreens(normalizedScreens);

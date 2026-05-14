@@ -47,8 +47,8 @@ if exist bin\Debug (
     copy %B_QT_FULLPATH%\bin\Qt5Cored.dll bin\Debug\ > NUL
     copy %B_QT_FULLPATH%\bin\Qt5Guid.dll bin\Debug\ > NUL
     copy %B_QT_FULLPATH%\bin\Qt5Networkd.dll bin\Debug\ > NUL
+    copy %B_QT_FULLPATH%\bin\Qt5Svgd.dll bin\Debug\ > NUL
     copy %B_QT_FULLPATH%\bin\Qt5Widgetsd.dll bin\Debug\ > NUL
-    copy %B_QT_FULLPATH%\bin\Qt5Cored.dll bin\Debug\ > NUL
     copy ..\ext\openssl\windows\x64\bin\* bin\Debug\ > NUL
     copy ..\res\openssl\barrier.conf bin\Debug\ > NUL
     mkdir bin\Debug\platforms
@@ -57,8 +57,8 @@ if exist bin\Debug (
     copy %B_QT_FULLPATH%\bin\Qt5Core.dll bin\Release\ > NUL
     copy %B_QT_FULLPATH%\bin\Qt5Gui.dll bin\Release\ > NUL
     copy %B_QT_FULLPATH%\bin\Qt5Network.dll bin\Release\ > NUL
+    copy %B_QT_FULLPATH%\bin\Qt5Svg.dll bin\Release\ > NUL
     copy %B_QT_FULLPATH%\bin\Qt5Widgets.dll bin\Release\ > NUL
-    copy %B_QT_FULLPATH%\bin\Qt5Core.dll bin\Release\ > NUL
     copy ..\ext\openssl\windows\x64\bin\* bin\Release\ > NUL
     copy ..\res\openssl\barrier.conf bin\Release\ > NUL
     mkdir bin\Release\platforms

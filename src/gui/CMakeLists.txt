@@ -168,7 +168,7 @@ if (WIN32)
     set(QT_BIN_DIR "${Qt5Core_DIR}/../../../bin")
     set(QT_SVG_BIN_DIR "${Qt5Svg_DIR}/../../../bin")
     set(QT_PLUGIN_DIR "${Qt5Core_DIR}/../../../plugins")
-    set(QT_SVG_PLUGIN_DIR "${Qt5Svg_DIR}/../../../plugins")
+    set(QT_DEBUG_SUFFIX "$<$<CONFIG:Debug>:d>")
 
     add_custom_command(TARGET waver POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -176,18 +176,18 @@ if (WIN32)
             "${OPENSSL_BIN_DIR}/ssleay32.dll"
             $<TARGET_FILE_DIR:waver>
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${QT_BIN_DIR}/Qt5Core.dll"
-            "${QT_BIN_DIR}/Qt5Gui.dll"
-            "${QT_BIN_DIR}/Qt5Widgets.dll"
-            "${QT_BIN_DIR}/Qt5Network.dll"
+            "${QT_BIN_DIR}/Qt5Core${QT_DEBUG_SUFFIX}.dll"
+            "${QT_BIN_DIR}/Qt5Gui${QT_DEBUG_SUFFIX}.dll"
+            "${QT_BIN_DIR}/Qt5Widgets${QT_DEBUG_SUFFIX}.dll"
+            "${QT_BIN_DIR}/Qt5Network${QT_DEBUG_SUFFIX}.dll"
             $<TARGET_FILE_DIR:waver>
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${QT_SVG_BIN_DIR}/Qt5Svg.dll"
+            "${QT_SVG_BIN_DIR}/Qt5Svg${QT_DEBUG_SUFFIX}.dll"
             $<TARGET_FILE_DIR:waver>
         COMMAND ${CMAKE_COMMAND} -E make_directory
             "$<TARGET_FILE_DIR:waver>/platforms"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${QT_PLUGIN_DIR}/platforms/qwindows.dll"
+            "${QT_PLUGIN_DIR}/platforms/qwindows${QT_DEBUG_SUFFIX}.dll"
             "$<TARGET_FILE_DIR:waver>/platforms/"
         COMMENT "Copying runtime DLLs..."
     )

@@ -319,3 +319,41 @@ TEST(ScreenManagerTests, loadLayout_prefersLogicalScreenConfigOverJsonLayout)
     ASSERT_NE(static_cast<const Screen*>(NULL), topOfSiloe);
     EXPECT_EQ("KANAAN:KANAAN-1", topOfSiloe->m_id);
 }
+
+TEST(ScreenManagerTests, loadLayout_prunesDisconnectedMonitorFromSavedJsonLayout)
+{
+    const std::string path = writeLayoutFile(
+        "{\"screens\":["
+        "{\"id\":\"mamre:mamre-2\",\"host\":\"mamre\",\"name\":\"mamre-2\","
+        "\"x\":518,\"y\":42,\"width\":240,\"height\":140,"
+        "\"links\":{\"left\":\"Siloe-1\"}},"
+        "{\"id\":\"mamre:mamre-1\",\"host\":\"mamre\",\"name\":\"mamre-1\","
+        "\"x\":522,\"y\":167,\"width\":240,\"height\":140,"
+        "\"links\":{\"left\":\"Siloe-1\"}},"
+        "{\"id\":\"Siloe:Siloe-1\",\"host\":\"Siloe\",\"name\":\"Siloe-1\","
+        "\"x\":293,\"y\":43,\"width\":240,\"height\":140,"
+        "\"links\":{\"right\":\"mamre-1\"}}"
+        "]}");
+
+    Config config;
+    std::map<std::string, HostGeometry> hostGeometries;
+    std::map<std::string, std::vector<ClientScreenInfo> > hostScreens;
+    hostScreens["mamre"].push_back(ClientScreenInfo("DP-1", 0, 0, 3840, 2160));
+    hostScreens["Siloe"].push_back(ClientScreenInfo("Siloe-1", 0, 0, 1920, 1080));
+
+    ScreenManager manager =
+        LayoutLoader::loadLayout(path, config, hostGeometries, hostScreens, "Siloe");
+
+    std::remove(path.c_str());
+
+    EXPECT_EQ(static_cast<const Screen*>(NULL), manager.getScreen("mamre:mamre-2"));
+    ASSERT_NE(static_cast<const Screen*>(NULL), manager.getScreen("mamre:mamre-1"));
+
+    const Screen* mamreMonitor =
+        manager.findScreenInDirection("Siloe:Siloe-1", kRight);
+    ASSERT_NE(static_cast<const Screen*>(NULL), mamreMonitor);
+    EXPECT_EQ("mamre:mamre-1", mamreMonitor->m_id);
+
+    EXPECT_EQ(static_cast<const Screen*>(NULL),
+              manager.findScreenInDirection("mamre:mamre-1", kRight));
+}

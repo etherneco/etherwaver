@@ -2055,15 +2055,7 @@ Server::isRecentReverseSwitch(BaseClientProxy* newScreen,
                               EDirection direction,
                               const std::string& layoutScreenId) const
 {
-    // This only absorbs duplicate edge events from the transition itself.
-    // Real user movement at the next edge should be evaluated again quickly.
-    static const double kRecentReverseSwitchCooldown = 0.25;
-
     if (!m_recentSwitchArmed || m_active == NULL) {
-        return false;
-    }
-
-    if (m_recentSwitchTimer.getTime() > kRecentReverseSwitchCooldown) {
         return false;
     }
 
@@ -2076,6 +2068,82 @@ Server::isRecentReverseSwitch(BaseClientProxy* newScreen,
             m_active == m_recentSwitchDestination &&
             newScreen == m_recentSwitchSource &&
             direction == oppositeDirection(m_recentSwitchDirection));
+}
+
+void
+Server::clearRecentReverseSwitchIfMovedAway(SInt32 x, SInt32 y)
+{
+    if (!m_recentSwitchArmed || m_active == NULL ||
+        m_active != m_recentSwitchDestination ||
+        m_activeLayoutScreenId != m_recentSwitchDestinationLayoutScreenId) {
+        return;
+    }
+
+    const etherwaver::layout::Screen* activeScreen =
+        m_screenLayout.getScreen(m_activeLayoutScreenId);
+    if (activeScreen == NULL) {
+        return;
+    }
+
+    SInt32 sx = 0;
+    SInt32 sy = 0;
+    SInt32 sw = 0;
+    SInt32 sh = 0;
+    if (!getClientScreenForLayoutScreen(m_screenLayout, m_active, *activeScreen,
+                                        sx, sy, sw, sh) ||
+        sw <= 0 || sh <= 0) {
+        return;
+    }
+
+    static const SInt32 kClearInset = 96;
+    const SInt32 insetX = std::min<SInt32>(kClearInset,
+        std::max<SInt32>(16, (sw - 1) / 4));
+    const SInt32 insetY = std::min<SInt32>(kClearInset,
+        std::max<SInt32>(16, (sh - 1) / 4));
+
+    bool movedAway = false;
+    switch (m_recentSwitchDirection) {
+    case kLeft:
+        // Entered through the destination right edge.
+        movedAway = (x <= sx + sw - 1 - insetX);
+        break;
+
+    case kRight:
+        // Entered through the destination left edge.
+        movedAway = (x >= sx + insetX);
+        break;
+
+    case kTop:
+        // Entered through the destination bottom edge.
+        movedAway = (y <= sy + sh - 1 - insetY);
+        break;
+
+    case kBottom:
+        // Entered through the destination top edge.
+        movedAway = (y >= sy + insetY);
+        break;
+
+    case kNoDirection:
+        movedAway = true;
+        break;
+    }
+
+    if (movedAway) {
+        LOG((CLOG_INFO
+            "object-layout recent reverse guard cleared activeHost=%s activeScreen=%s pos=%d,%d direction=%s",
+            getName(m_active).c_str(),
+            m_activeLayoutScreenId.c_str(),
+            x, y,
+            safeDirectionName(m_recentSwitchDirection)));
+        std::ostringstream debug;
+        debug << "recent-reverse-guard-cleared"
+              << " activeClient=" << getName(m_active)
+              << " activeLayout=" << m_activeLayoutScreenId
+              << " pos=" << x << "," << y
+              << " recentDirection=" << safeDirectionName(m_recentSwitchDirection);
+        appendObjectLayoutDebugLog(debug.str());
+        m_recentSwitchArmed = false;
+    }
 }
 
 UInt32
@@ -3941,6 +4009,7 @@ Server::onMouseMoveSecondary(SInt32 dx, SInt32 dy)
 		}
 		m_x = currentX;
 		m_y = currentY;
+		clearRecentReverseSwitchIfMovedAway(m_x, m_y);
 	}
 
 	// save last delta

@@ -673,7 +673,14 @@ TEST(ServerLayoutMappingTests, objectLayoutServerSimulationSwitchesAcrossStacked
 
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
-    ASSERT_TRUE(server.trySwitchUsingObjectLayoutForTest(-1, 1018, false));
+    EXPECT_FALSE(server.trySwitchUsingObjectLayoutForTest(-1, 1018, false));
+    EXPECT_EQ(&mamre, server.getActiveClientForTest());
+    EXPECT_EQ("mamre:mamre-2", server.getActiveLayoutScreenIdForTest());
+
+    server.onMouseMoveSecondaryForTest(120, 0);
+    ASSERT_EQ(&mamre, server.getActiveClientForTest());
+
+    server.onMouseMoveSecondaryForTest(-200, 0);
     EXPECT_EQ(&siloe, server.getActiveClientForTest());
     EXPECT_EQ("Siloe:Siloe-1", server.getActiveLayoutScreenIdForTest());
     EXPECT_EQ(1895, siloe.m_lastEnterX);

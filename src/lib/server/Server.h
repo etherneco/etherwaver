@@ -384,6 +384,7 @@ private:
     bool                isRecentReverseSwitch(BaseClientProxy* newScreen,
                             EDirection direction,
                             const std::string& layoutScreenId) const;
+    void                clearRecentReverseSwitchIfMovedAway(SInt32 x, SInt32 y);
 
     // event handlers
     void                handleShapeChanged(const Event&, void*);

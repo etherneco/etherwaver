@@ -512,6 +512,9 @@ public:
         , m_reportedCursorY(0)
         , m_hasTrackedCursorPos(false)
         , m_ignoreUnexpectedMoveAfterEnter(false)
+        , m_enterEdgeTarget(kNoEdgeTarget)
+        , m_enterTargetX(0)
+        , m_enterTargetY(0)
     {
         assert(m_screen != NULL);
         m_started = m_uhidServer->start(deviceName);
@@ -544,6 +547,9 @@ public:
             m_cursorY = yAbs;
             m_hasTrackedCursorPos = true;
             m_ignoreUnexpectedMoveAfterEnter = true;
+            m_enterEdgeTarget = edgeTarget;
+            m_enterTargetX = xAbs;
+            m_enterTargetY = yAbs;
             LOG((CLOG_INFO
                 "uhid: edge enter cursor target=%d,%d edge=%s bounds=%d,%d %dx%d",
                 xAbs, yAbs, edgeTargetName(edgeTarget),
@@ -560,6 +566,9 @@ public:
             m_cursorX = xAbs;
             m_cursorY = yAbs;
             m_ignoreUnexpectedMoveAfterEnter = true;
+            m_enterEdgeTarget = kNoEdgeTarget;
+            m_enterTargetX = xAbs;
+            m_enterTargetY = yAbs;
             LOG((CLOG_DEBUG2
                 "uhid: soft set cursor reason=enter current=%d,%d target=%d,%d delta=%d,%d bounds=%d,%d %dx%d",
                 prevX, prevY, xAbs, yAbs, xAbs - prevX, yAbs - prevY,
@@ -574,6 +583,9 @@ public:
             softSetCursorPos(xAbs, yAbs, "enter");
             m_hasTrackedCursorPos = true;
             m_ignoreUnexpectedMoveAfterEnter = true;
+            m_enterEdgeTarget = kNoEdgeTarget;
+            m_enterTargetX = xAbs;
+            m_enterTargetY = yAbs;
         }
 
         LOG((CLOG_INFO "uhid: enter cursor at %d,%d bounds=%d,%d %dx%d",
@@ -590,6 +602,7 @@ public:
         m_hasActiveBounds = false;
         m_screens.clear();
         m_ignoreUnexpectedMoveAfterEnter = false;
+        m_enterEdgeTarget = kNoEdgeTarget;
         // Intentionally keep m_cursorX/m_cursorY: enter() uses them on re-entry
         // to compute the correct relative-motion delta without querying XQueryPointer.
         hideDebugBoundsOverlay();
@@ -644,8 +657,9 @@ public:
         const SInt32 requestedY = yAbs;
         if (shouldIgnoreUnexpectedMoveAfterEnter(requestedX, requestedY)) {
             LOG((CLOG_INFO
-                "uhid: ignoring stale post-enter move requested=%d,%d activeBounds=%d,%d %dx%d",
+                "uhid: ignoring stale post-enter move requested=%d,%d enterTarget=%d,%d edge=%s activeBounds=%d,%d %dx%d",
                 requestedX, requestedY,
+                m_enterTargetX, m_enterTargetY, edgeTargetName(m_enterEdgeTarget),
                 m_activeX, m_activeY, m_activeW, m_activeH));
             writeDebugStatus("ignored-post-enter-move");
             return;
@@ -661,6 +675,7 @@ public:
         m_cursorX = xAbs;
         m_cursorY = yAbs;
         m_ignoreUnexpectedMoveAfterEnter = false;
+        m_enterEdgeTarget = kNoEdgeTarget;
         m_uhidServer->mouseMoveAbsolute(xAbs, yAbs);
         writeDebugStatus("absolute");
     }
@@ -682,6 +697,7 @@ public:
         m_cursorX = xAbs;
         m_cursorY = yAbs;
         m_ignoreUnexpectedMoveAfterEnter = false;
+        m_enterEdgeTarget = kNoEdgeTarget;
         m_uhidServer->mouseMoveAbsolute(xAbs, yAbs);
         writeDebugStatus("relative");
     }
@@ -818,11 +834,54 @@ private:
         }
 
         if (contains(x, y, m_activeX, m_activeY, m_activeW, m_activeH)) {
+            if (isOppositeEdgeMoveAfterEdgeEnter(x, y)) {
+                return true;
+            }
             return false;
         }
 
         m_ignoreUnexpectedMoveAfterEnter = false;
+        m_enterEdgeTarget = kNoEdgeTarget;
         return true;
+    }
+
+    bool isOppositeEdgeMoveAfterEdgeEnter(SInt32 x, SInt32 y) const
+    {
+        if (m_enterEdgeTarget == kNoEdgeTarget || !m_hasActiveBounds) {
+            return false;
+        }
+
+        const SInt32 left = m_activeX;
+        const SInt32 right = m_activeX + m_activeW - 1;
+        const SInt32 top = m_activeY;
+        const SInt32 bottom = m_activeY + m_activeH - 1;
+        const SInt32 horizontalThreshold =
+            std::min<SInt32>(96, std::max<SInt32>(16, m_activeW / 8));
+        const SInt32 verticalThreshold =
+            std::min<SInt32>(96, std::max<SInt32>(16, m_activeH / 8));
+
+        switch (m_enterEdgeTarget) {
+        case kLeftEdgeTarget:
+            return (x >= right - horizontalThreshold &&
+                    std::abs(y - m_enterTargetY) <= verticalThreshold);
+
+        case kRightEdgeTarget:
+            return (x <= left + horizontalThreshold &&
+                    std::abs(y - m_enterTargetY) <= verticalThreshold);
+
+        case kTopEdgeTarget:
+            return (y >= bottom - verticalThreshold &&
+                    std::abs(x - m_enterTargetX) <= horizontalThreshold);
+
+        case kBottomEdgeTarget:
+            return (y <= top + verticalThreshold &&
+                    std::abs(x - m_enterTargetX) <= horizontalThreshold);
+
+        case kNoEdgeTarget:
+            break;
+        }
+
+        return false;
     }
 
     bool isCurrentBounds(SInt32 x, SInt32 y, SInt32 w, SInt32 h) const
@@ -1062,6 +1121,9 @@ private:
     SInt32 m_reportedCursorY;
     bool m_hasTrackedCursorPos;
     bool m_ignoreUnexpectedMoveAfterEnter;
+    EdgeTarget m_enterEdgeTarget;
+    SInt32 m_enterTargetX;
+    SInt32 m_enterTargetY;
 };
 
 } // namespace

@@ -539,10 +539,10 @@ public:
         if (edgeTarget != kNoEdgeTarget) {
             // On Wayland the compositor only accepts relative UHID motion.  If
             // our remembered absolute position is stale, a single relative
-            // delta can land on the opposite edge.  For edge transitions, first
-            // drive toward the destination edge, then move back to the inset
-            // target so "right of source" enters the left edge of the target.
-            forceEdgeEnterPosition(edgeTarget, xAbs, yAbs);
+            // delta can land on the opposite edge.  For edge transitions, use
+            // the cursor helper when available so the enter lands from the real
+            // compositor position instead of simulating a trip through an edge.
+            positionEdgeEnterCursor(edgeTarget, xAbs, yAbs);
             m_cursorX = xAbs;
             m_cursorY = yAbs;
             m_hasTrackedCursorPos = true;
@@ -825,6 +825,23 @@ private:
         case kNoEdgeTarget:
             break;
         }
+    }
+
+    void positionEdgeEnterCursor(EdgeTarget edge, SInt32 targetX, SInt32 targetY)
+    {
+        SInt32 currentX = 0;
+        SInt32 currentY = 0;
+        if (queryCursorPositionServer(currentX, currentY)) {
+            m_uhidServer->primeAbsolutePosition(currentX, currentY);
+            m_uhidServer->mouseMoveAbsolute(targetX, targetY);
+            LOG((CLOG_INFO
+                "uhid: edge enter cursor via cursor-server current=%d,%d target=%d,%d edge=%s bounds=%d,%d %dx%d",
+                currentX, currentY, targetX, targetY, edgeTargetName(edge),
+                m_activeX, m_activeY, m_activeW, m_activeH));
+            return;
+        }
+
+        forceEdgeEnterPosition(edge, targetX, targetY);
     }
 
     bool shouldIgnoreUnexpectedMoveAfterEnter(SInt32 x, SInt32 y)

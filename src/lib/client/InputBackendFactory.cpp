@@ -676,6 +676,10 @@ public:
         m_cursorY = yAbs;
         m_ignoreUnexpectedMoveAfterEnter = false;
         m_enterEdgeTarget = kNoEdgeTarget;
+        LOG((CLOG_INFO
+            "uhid: absolute cursor move requested=%d,%d actual=%d,%d reported=%d,%d bounds=%d,%d %dx%d",
+            requestedX, requestedY, xAbs, yAbs, m_reportedCursorX, m_reportedCursorY,
+            m_activeX, m_activeY, m_activeW, m_activeH));
         m_uhidServer->mouseMoveAbsolute(xAbs, yAbs);
         writeDebugStatus("absolute");
     }
@@ -698,6 +702,11 @@ public:
         m_cursorY = yAbs;
         m_ignoreUnexpectedMoveAfterEnter = false;
         m_enterEdgeTarget = kNoEdgeTarget;
+        LOG((CLOG_INFO
+            "uhid: relative cursor move delta=%d,%d requested=%d,%d actual=%d,%d reported=%d,%d bounds=%d,%d %dx%d",
+            dx, dy, requestedX, requestedY, xAbs, yAbs,
+            m_reportedCursorX, m_reportedCursorY,
+            m_activeX, m_activeY, m_activeW, m_activeH));
         m_uhidServer->mouseMoveAbsolute(xAbs, yAbs);
         writeDebugStatus("relative");
     }

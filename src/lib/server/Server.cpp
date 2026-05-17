@@ -73,6 +73,68 @@ clampInt(int value, int minValue, int maxValue)
     return value;
 }
 
+static std::string
+jsonEscape(const std::string& value)
+{
+    std::ostringstream escaped;
+    for (std::string::const_iterator it = value.begin(); it != value.end(); ++it) {
+        switch (*it) {
+        case '\\':
+            escaped << "\\\\";
+            break;
+        case '"':
+            escaped << "\\\"";
+            break;
+        case '\n':
+            escaped << "\\n";
+            break;
+        case '\r':
+            escaped << "\\r";
+            break;
+        case '\t':
+            escaped << "\\t";
+            break;
+        default:
+            escaped << *it;
+            break;
+        }
+    }
+    return escaped.str();
+}
+
+static std::string
+serializeLayoutSnapshot(const etherwaver::layout::ScreenManager& layout)
+{
+    std::ostringstream json;
+    json << "{\n  \"screens\": [\n";
+
+    const std::vector<etherwaver::layout::Screen>& screens = layout.getScreens();
+    for (std::vector<etherwaver::layout::Screen>::const_iterator it = screens.begin();
+         it != screens.end(); ++it) {
+        if (it != screens.begin()) {
+            json << ",\n";
+        }
+        json << "    {\n"
+             << "      \"id\": \"" << jsonEscape(it->m_id) << "\",\n"
+             << "      \"host\": \"" << jsonEscape(it->m_hostId) << "\",\n"
+             << "      \"name\": \"" << jsonEscape(it->m_name) << "\",\n"
+             << "      \"x\": " << it->m_x << ",\n"
+             << "      \"y\": " << it->m_y << ",\n"
+             << "      \"width\": " << it->m_width << ",\n"
+             << "      \"height\": " << it->m_height << ",\n"
+             << "      \"links\": {\n"
+             << "        \"right\": \"" << jsonEscape(it->m_rightLink) << "\",\n"
+             << "        \"left\": \"" << jsonEscape(it->m_leftLink) << "\",\n"
+             << "        \"up\": \"" << jsonEscape(it->m_topLink) << "\",\n"
+             << "        \"down\": \"" << jsonEscape(it->m_bottomLink) << "\"\n"
+             << "      }\n"
+             << "    }";
+    }
+
+    json << "\n  ]\n}\n";
+    return json.str();
+}
+
 static int
 toGlobalCoordinate(int localValue, int localOrigin, int localSpan,
                    int screenOrigin, int screenSpan)
@@ -1650,6 +1712,13 @@ Server::reloadScreenLayout()
         m_activeLayoutScreenId = activeScreen->m_id;
         std::lock_guard<std::mutex> lock(m_mutex);
         m_currentHost = layoutScreenDisplayName(*activeScreen);
+    }
+
+    if (!m_screenLayout.empty()) {
+        const std::string layoutJson = serializeLayoutSnapshot(m_screenLayout);
+        for (ClientList::const_iterator it = m_clients.begin(); it != m_clients.end(); ++it) {
+            it->second->sendLayoutSnapshot(layoutJson);
+        }
     }
 
     refreshPrimaryUhidGeometry();

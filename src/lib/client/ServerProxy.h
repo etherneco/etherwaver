@@ -101,6 +101,7 @@ private:
     void                screensaver();
     void                resetOptions();
     void                setOptions();
+    void                layoutSnapshot();
     void                queryInfo();
     void                infoAcknowledgment();
     void                fileChunkReceived();

@@ -33,6 +33,9 @@
 #include "base/TMethodEventJob.h"
 #include "base/XBase.h"
 
+#include <cctype>
+#include <cstdlib>
+#include <fstream>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -61,6 +64,36 @@ serializeScreenList(const std::string& clientName,
                << it->m_h;
     }
     return stream.str();
+}
+
+std::string
+safePathComponent(const std::string& value)
+{
+    std::string result;
+    for (std::string::const_iterator it = value.begin(); it != value.end(); ++it) {
+        const unsigned char ch = static_cast<unsigned char>(*it);
+        if (std::isalnum(ch) || ch == '-' || ch == '_') {
+            result += static_cast<char>(ch);
+        }
+        else {
+            result += '_';
+        }
+    }
+    return result.empty() ? "server" : result;
+}
+
+std::string
+layoutSnapshotPath(const NetworkAddress& address)
+{
+    const char* tmpDir = std::getenv("TMPDIR");
+    std::ostringstream path;
+    path << ((tmpDir != NULL && tmpDir[0] != '\0') ? tmpDir : "/tmp")
+         << "/etherwaver-layout-"
+         << safePathComponent(address.getHostname())
+         << "-"
+         << address.getPort()
+         << ".json";
+    return path.str();
 }
 
 } // namespace
@@ -204,6 +237,10 @@ ServerProxy::parseHandshakeMessage(const UInt8* code)
         m_client->handshakeComplete();
     }
 
+    else if (memcmp(code, kMsgDLayoutSnapshot, 4) == 0) {
+        layoutSnapshot();
+    }
+
     else if (memcmp(code, kMsgCResetOptions, 4) == 0) {
         resetOptions();
     }
@@ -339,6 +376,10 @@ ServerProxy::parseMessage(const UInt8* code)
         setOptions();
     }
 
+    else if (memcmp(code, kMsgDLayoutSnapshot, 4) == 0) {
+        layoutSnapshot();
+    }
+
     else if (memcmp(code, kMsgDFileTransfer, 4) == 0) {
         fileChunkReceived();
     }
@@ -406,6 +447,33 @@ ServerProxy::onClipboardChanged(ClipboardID id, const IClipboard* clipboard)
     LOG((CLOG_DEBUG "sending clipboard %d seqnum=%d", id, m_seqNum));
 
     StreamChunker::sendClipboard(data, data.size(), id, m_seqNum, m_events, this);
+}
+
+void
+ServerProxy::layoutSnapshot()
+{
+    std::string payload;
+    ProtocolUtil::readf(m_stream, kMsgDLayoutSnapshot + 4, &payload);
+
+    const std::string path = layoutSnapshotPath(m_client->getServerAddress());
+    std::ofstream output(path.c_str(), std::ios::binary | std::ios::trunc);
+    if (!output) {
+        LOG((CLOG_WARN "failed to save object layout snapshot from server path=%s",
+            path.c_str()));
+        return;
+    }
+
+    output << payload;
+    output.close();
+    if (!output) {
+        LOG((CLOG_WARN "failed to finish object layout snapshot from server path=%s",
+            path.c_str()));
+        return;
+    }
+
+    LOG((CLOG_INFO "saved object layout snapshot from server path=%s bytes=%lu",
+        path.c_str(),
+        static_cast<unsigned long>(payload.size())));
 }
 
 void
@@ -579,6 +647,10 @@ ServerProxy::enter()
 
     // forward
     m_client->enter(x, y, seqNum, static_cast<KeyModifierMask>(mask), false);
+
+    // Keep the server-side ClientProxy cursor cache in sync with the
+    // post-enter UHID position before the first secondary motion delta.
+    queryInfo();
 }
 
 void

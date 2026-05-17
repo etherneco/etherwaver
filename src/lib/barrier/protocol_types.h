@@ -269,6 +269,10 @@ extern const char*        kMsgDInfo;
 // payload is a serialized list of screens reported by the client.
 extern const char*        kMsgDScreenList;
 
+// object layout snapshot: primary -> secondary
+// payload is the server's current object-layout JSON.
+extern const char*        kMsgDLayoutSnapshot;
+
 // set options:  primary -> secondary
 // client should set the given option/value pairs.  $1 = option/value
 // pairs.

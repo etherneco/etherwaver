@@ -468,6 +468,15 @@ ClientProxy1_0::setOptions(const OptionsList& options)
     }
 }
 
+void
+ClientProxy1_0::sendLayoutSnapshot(const std::string& layoutJson)
+{
+    LOG((CLOG_INFO "send object layout snapshot to \"%s\" bytes=%lu",
+        getName().c_str(),
+        static_cast<unsigned long>(layoutJson.size())));
+    ProtocolUtil::writef(getStream(), kMsgDLayoutSnapshot, &layoutJson);
+}
+
 bool
 ClientProxy1_0::recvInfo()
 {

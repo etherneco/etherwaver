@@ -28,8 +28,10 @@ public:
                     SInt32 x, SInt32 y, SInt32 w, SInt32 h)
         : BaseClientProxy(name)
         , m_screens(screens)
-        , m_x(x)
-        , m_y(y)
+        , m_shapeX(x)
+        , m_shapeY(y)
+        , m_cursorX(x)
+        , m_cursorY(y)
         , m_w(w)
         , m_h(h)
         , m_entered(false)
@@ -42,20 +44,20 @@ public:
     bool getClipboard(ClipboardID, IClipboard*) const { return false; }
     void getShape(SInt32& x, SInt32& y, SInt32& w, SInt32& h) const
     {
-        x = m_x;
-        y = m_y;
+        x = m_shapeX;
+        y = m_shapeY;
         w = m_w;
         h = m_h;
     }
     void getScreens(std::vector<ClientScreenInfo>& screens) const { screens = m_screens; }
-    void getCursorPos(SInt32& x, SInt32& y) const { x = m_x; y = m_y; }
+    void getCursorPos(SInt32& x, SInt32& y) const { x = m_cursorX; y = m_cursorY; }
     void enter(SInt32 x, SInt32 y, UInt32, KeyModifierMask, bool)
     {
         m_entered = true;
         m_lastEnterX = x;
         m_lastEnterY = y;
-        m_x = x;
-        m_y = y;
+        m_cursorX = x;
+        m_cursorY = y;
     }
     bool leave() { return true; }
     void setClipboard(ClipboardID, const IClipboard*) {}
@@ -69,8 +71,8 @@ public:
     void mouseMove(SInt32 x, SInt32 y)
     {
         m_mouseMoves.push_back(std::make_pair(x, y));
-        m_x = x;
-        m_y = y;
+        m_cursorX = x;
+        m_cursorY = y;
     }
     void mouseRelativeMove(SInt32, SInt32) {}
     void mouseWheel(SInt32, SInt32) {}
@@ -88,8 +90,10 @@ public:
 
 private:
     std::vector<ClientScreenInfo> m_screens;
-    mutable SInt32 m_x;
-    mutable SInt32 m_y;
+    SInt32 m_shapeX;
+    SInt32 m_shapeY;
+    mutable SInt32 m_cursorX;
+    mutable SInt32 m_cursorY;
     SInt32 m_w;
     SInt32 m_h;
 };
@@ -102,8 +106,10 @@ public:
         : PrimaryClient()
         , m_name(name)
         , m_screens(screens)
-        , m_x(x)
-        , m_y(y)
+        , m_shapeX(x)
+        , m_shapeY(y)
+        , m_cursorX(x)
+        , m_cursorY(y)
         , m_w(w)
         , m_h(h)
         , m_entered(false)
@@ -117,20 +123,20 @@ public:
     bool getClipboard(ClipboardID, IClipboard*) const { return false; }
     void getShape(SInt32& x, SInt32& y, SInt32& w, SInt32& h) const
     {
-        x = m_x;
-        y = m_y;
+        x = m_shapeX;
+        y = m_shapeY;
         w = m_w;
         h = m_h;
     }
     void getScreens(std::vector<ClientScreenInfo>& screens) const { screens = m_screens; }
-    void getCursorPos(SInt32& x, SInt32& y) const { x = m_x; y = m_y; }
+    void getCursorPos(SInt32& x, SInt32& y) const { x = m_cursorX; y = m_cursorY; }
     void enter(SInt32 x, SInt32 y, UInt32, KeyModifierMask, bool)
     {
         m_entered = true;
         m_lastEnterX = x;
         m_lastEnterY = y;
-        m_x = x;
-        m_y = y;
+        m_cursorX = x;
+        m_cursorY = y;
     }
     bool leave() { return true; }
     void setClipboard(ClipboardID, const IClipboard*) {}
@@ -144,8 +150,8 @@ public:
     void mouseMove(SInt32 x, SInt32 y)
     {
         m_mouseMoves.push_back(std::make_pair(x, y));
-        m_x = x;
-        m_y = y;
+        m_cursorX = x;
+        m_cursorY = y;
     }
     void mouseRelativeMove(SInt32, SInt32) {}
     void mouseWheel(SInt32, SInt32) {}
@@ -159,8 +165,10 @@ public:
 
     std::string m_name;
     std::vector<ClientScreenInfo> m_screens;
-    mutable SInt32 m_x;
-    mutable SInt32 m_y;
+    SInt32 m_shapeX;
+    SInt32 m_shapeY;
+    mutable SInt32 m_cursorX;
+    mutable SInt32 m_cursorY;
     SInt32 m_w;
     SInt32 m_h;
     bool m_entered;
@@ -685,6 +693,65 @@ TEST(ServerLayoutMappingTests, objectLayoutServerSimulationSwitchesAcrossStacked
     EXPECT_EQ("Siloe:Siloe-1", server.getActiveLayoutScreenIdForTest());
     EXPECT_EQ(1895, siloe.m_lastEnterX);
     EXPECT_EQ(509, siloe.m_lastEnterY);
+}
+
+TEST(ServerLayoutMappingTests, primaryMovementAwayFromReturnEdgeClearsRecentReverseGuard)
+{
+    TestEventQueue events;
+    Config config(&events);
+    config.addScreen("Siloe");
+    config.addScreen("mamre");
+
+    ScreenManager layout;
+    std::vector<Screen> layoutScreens;
+    layoutScreens.push_back(Screen("Siloe:Siloe-1", "Siloe", "Siloe-1",
+                                   0, 0, 1920, 1080));
+    layoutScreens.back().m_rightLink = "mamre-1";
+    layoutScreens.push_back(Screen("mamre:mamre-1", "mamre", "mamre-1",
+                                   1920, 0, 3840, 2160));
+    layoutScreens.back().m_leftLink = "Siloe-1";
+    layout.setScreens(layoutScreens);
+
+    std::vector<ClientScreenInfo> siloeScreens;
+    siloeScreens.push_back(ClientScreenInfo("Siloe-1", 0, 0, 1920, 1080));
+    FakePrimaryClient siloe("Siloe", siloeScreens, 0, 0, 1920, 1080);
+
+    std::vector<ClientScreenInfo> mamreScreens;
+    mamreScreens.push_back(ClientScreenInfo("mamre-1", 0, 0, 3840, 2160));
+    FakeClientProxy mamre("mamre", mamreScreens, 0, 0, 3840, 2160);
+
+    Server server;
+    server.setEventsForTest(&events);
+    server.setConfigForTest(&config);
+    server.setPrimaryClientForTest(&siloe);
+    server.addClientForTest("Siloe", &siloe);
+    server.addClientForTest("mamre", &mamre);
+    server.setScreenLayoutForTest(layout);
+    server.setActive(&siloe);
+    server.setActiveLayoutScreenIdForTest("Siloe:Siloe-1");
+    server.setCursorPosForTest(1919, 540);
+
+    ASSERT_TRUE(server.trySwitchUsingObjectLayoutForTest(1920, 540, true));
+    EXPECT_EQ(&mamre, server.getActiveClientForTest());
+    EXPECT_EQ("mamre:mamre-1", server.getActiveLayoutScreenIdForTest());
+
+    server.onMouseMoveSecondaryForTest(120, 0);
+    ASSERT_EQ(&mamre, server.getActiveClientForTest());
+
+    server.onMouseMoveSecondaryForTest(-200, 0);
+    EXPECT_EQ(&siloe, server.getActiveClientForTest());
+    EXPECT_EQ("Siloe:Siloe-1", server.getActiveLayoutScreenIdForTest());
+    EXPECT_EQ(1895, siloe.m_lastEnterX);
+    EXPECT_EQ(540, siloe.m_lastEnterY);
+
+    EXPECT_FALSE(server.trySwitchUsingObjectLayoutForTest(1920, 540, true));
+    EXPECT_EQ(&siloe, server.getActiveClientForTest());
+
+    server.onMouseMovePrimaryForTest(1700, 540);
+
+    EXPECT_TRUE(server.trySwitchUsingObjectLayoutForTest(1920, 540, true));
+    EXPECT_EQ(&mamre, server.getActiveClientForTest());
+    EXPECT_EQ("mamre:mamre-1", server.getActiveLayoutScreenIdForTest());
 }
 
 TEST(ServerLayoutMappingTests, sameClientLogicalSwitchSendsEnterSoClientRefreshesMonitorBounds)

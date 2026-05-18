@@ -172,6 +172,9 @@ public:
     void onMouseMoveSecondaryForTest(SInt32 dx, SInt32 dy) {
         onMouseMoveSecondary(dx, dy);
     }
+    bool onMouseMovePrimaryForTest(SInt32 x, SInt32 y) {
+        return onMouseMovePrimary(x, y);
+    }
 #endif
 
     // Diagnostic/test constructor. It leaves the server inert until test code

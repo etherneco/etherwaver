@@ -863,6 +863,12 @@ private:
             if (isOppositeEdgeMoveAfterEdgeEnter(x, y)) {
                 return true;
             }
+            if (isFarFromEnteredEdgeAfterEdgeEnter(x, y)) {
+                return true;
+            }
+            if (isFarAlongEnteredEdgeAfterEdgeEnter(x, y)) {
+                return true;
+            }
             return false;
         }
 
@@ -902,6 +908,68 @@ private:
         case kBottomEdgeTarget:
             return (y <= top + verticalThreshold &&
                     std::abs(x - m_enterTargetX) <= horizontalThreshold);
+
+        case kNoEdgeTarget:
+            break;
+        }
+
+        return false;
+    }
+
+    bool isFarFromEnteredEdgeAfterEdgeEnter(SInt32 x, SInt32 y) const
+    {
+        if (m_enterEdgeTarget == kNoEdgeTarget || !m_hasActiveBounds) {
+            return false;
+        }
+
+        const SInt32 left = m_activeX;
+        const SInt32 right = m_activeX + m_activeW - 1;
+        const SInt32 top = m_activeY;
+        const SInt32 bottom = m_activeY + m_activeH - 1;
+        const SInt32 horizontalThreshold =
+            std::min<SInt32>(512, std::max<SInt32>(128, m_activeW / 8));
+        const SInt32 verticalThreshold =
+            std::min<SInt32>(512, std::max<SInt32>(128, m_activeH / 8));
+
+        switch (m_enterEdgeTarget) {
+        case kLeftEdgeTarget:
+            return x > left + horizontalThreshold;
+
+        case kRightEdgeTarget:
+            return x < right - horizontalThreshold;
+
+        case kTopEdgeTarget:
+            return y > top + verticalThreshold;
+
+        case kBottomEdgeTarget:
+            return y < bottom - verticalThreshold;
+
+        case kNoEdgeTarget:
+            break;
+        }
+
+        return false;
+    }
+
+    bool isFarAlongEnteredEdgeAfterEdgeEnter(SInt32 x, SInt32 y) const
+    {
+        if (m_enterEdgeTarget == kNoEdgeTarget || !m_hasActiveBounds) {
+            return false;
+        }
+
+        const SInt32 horizontalThreshold =
+            std::min<SInt32>(512, std::max<SInt32>(128, m_activeW / 8));
+        const SInt32 verticalThreshold =
+            std::min<SInt32>(512, std::max<SInt32>(128, m_activeH / 8));
+
+        switch (m_enterEdgeTarget) {
+        case kLeftEdgeTarget:
+        case kRightEdgeTarget:
+            return std::abs(y - m_enterTargetY) > verticalThreshold;
+
+        case kTopEdgeTarget:
+        case kBottomEdgeTarget:
+            return std::abs(x - m_enterTargetX) > horizontalThreshold;
 
         case kNoEdgeTarget:
             break;
@@ -1001,20 +1069,20 @@ private:
         const SInt32 right = m_activeX + m_activeW - 1;
         const SInt32 bottom = m_activeY + m_activeH - 1;
 
-        m_reportedCursorX = actualX;
-        m_reportedCursorY = actualY;
+        m_reportedCursorX = std::min<SInt32>(std::max<SInt32>(requestedX, left), right);
+        m_reportedCursorY = std::min<SInt32>(std::max<SInt32>(requestedY, top), bottom);
 
-        if (requestedX < actualX) {
+        if (requestedX < left) {
             m_reportedCursorX = left;
         }
-        else if (requestedX > actualX) {
+        else if (requestedX > right) {
             m_reportedCursorX = right;
         }
 
-        if (requestedY < actualY) {
+        if (requestedY < top) {
             m_reportedCursorY = top;
         }
-        else if (requestedY > actualY) {
+        else if (requestedY > bottom) {
             m_reportedCursorY = bottom;
         }
     }

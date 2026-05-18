@@ -3789,6 +3789,10 @@ Server::onMouseMovePrimary(SInt32 x, SInt32 y)
 	m_y       = y;
 
 	if (usingObjectLayout()) {
+		clearRecentReverseSwitchIfMovedAway(m_x, m_y);
+	}
+
+	if (usingObjectLayout()) {
 		SInt32 ax, ay, aw, ah;
 		m_active->getShape(ax, ay, aw, ah);
 		const etherwaver::layout::Screen* sourceScreen = getActiveLayoutScreen();

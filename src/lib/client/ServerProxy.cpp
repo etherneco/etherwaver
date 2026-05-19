@@ -33,6 +33,7 @@
 #include "base/TMethodEventJob.h"
 #include "base/XBase.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdlib>
 #include <fstream>
@@ -479,16 +480,74 @@ ServerProxy::layoutSnapshot()
 void
 ServerProxy::flushCompressedMouse()
 {
+    bool flushed = false;
     if (m_compressMouse) {
         m_compressMouse = false;
         m_client->mouseMove(m_xMouse, m_yMouse);
+        flushed = true;
     }
     if (m_compressMouseRelative) {
         m_compressMouseRelative = false;
         m_client->mouseRelativeMove(m_dxMouse, m_dyMouse);
         m_dxMouse = 0;
         m_dyMouse = 0;
+        flushed = true;
     }
+    if (flushed) {
+        queryInfo();
+    }
+}
+
+void
+ServerProxy::snapCursorToLeaveEdge()
+{
+    SInt32 x = 0;
+    SInt32 y = 0;
+    SInt32 w = 0;
+    SInt32 h = 0;
+    m_client->getShape(x, y, w, h);
+    if (w <= 0 || h <= 0) {
+        return;
+    }
+
+    SInt32 cursorX = 0;
+    SInt32 cursorY = 0;
+    m_client->getCursorPos(cursorX, cursorY);
+
+    const SInt32 left = x;
+    const SInt32 top = y;
+    const SInt32 right = x + w - 1;
+    const SInt32 bottom = y + h - 1;
+
+    bool snap = false;
+    SInt32 targetX = cursorX;
+    SInt32 targetY = cursorY;
+    if (cursorX <= left) {
+        targetX = left;
+        snap = true;
+    }
+    else if (cursorX >= right) {
+        targetX = right;
+        snap = true;
+    }
+    if (cursorY <= top) {
+        targetY = top;
+        snap = true;
+    }
+    else if (cursorY >= bottom) {
+        targetY = bottom;
+        snap = true;
+    }
+
+    if (!snap) {
+        return;
+    }
+
+    LOG((CLOG_INFO
+        "snap cursor to leave edge cursor=%d,%d target=%d,%d bounds=%d,%d %dx%d",
+        cursorX, cursorY, targetX, targetY, x, y, w, h));
+    m_client->mouseMove(targetX, targetY);
+    queryInfo();
 }
 
 void
@@ -661,6 +720,7 @@ ServerProxy::leave()
 
     // send last mouse motion
     flushCompressedMouse();
+    snapCursorToLeaveEdge();
 
     // forward
     m_client->leave();

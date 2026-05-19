@@ -4084,6 +4084,8 @@ Server::onMouseMoveSecondary(SInt32 dx, SInt32 dy)
 		m_y = currentY;
 		clearRecentReverseSwitchIfMovedAway(m_x, m_y);
 	}
+	const SInt32 currentXBeforeDelta = m_x;
+	const SInt32 currentYBeforeDelta = m_y;
 
 	// save last delta
 	m_xDelta2 = m_xDelta;
@@ -4096,6 +4098,66 @@ Server::onMouseMoveSecondary(SInt32 dx, SInt32 dy)
 	// accumulate motion
 	m_x      += dx;
 	m_y      += dy;
+
+	if (usingObjectLayout()) {
+		const etherwaver::layout::Screen* sourceScreen = getActiveLayoutScreen();
+		SInt32 sx = 0;
+		SInt32 sy = 0;
+		SInt32 sw = 0;
+		SInt32 sh = 0;
+		if (sourceScreen != NULL &&
+			getClientScreenForLayoutScreen(m_screenLayout, m_active, *sourceScreen,
+										   sx, sy, sw, sh) &&
+			sw > 0 && sh > 0) {
+			const SInt32 left = sx;
+			const SInt32 top = sy;
+			const SInt32 right = sx + sw - 1;
+			const SInt32 bottom = sy + sh - 1;
+			SInt32 edgeX = clampInt(m_x, left, right);
+			SInt32 edgeY = clampInt(m_y, top, bottom);
+			bool crossedHardEdge = false;
+
+			if (currentXBeforeDelta > left && m_x < left) {
+				edgeX = left;
+				crossedHardEdge = true;
+			}
+			else if (currentXBeforeDelta < right && m_x > right) {
+				edgeX = right;
+				crossedHardEdge = true;
+			}
+			if (currentYBeforeDelta > top && m_y < top) {
+				edgeY = top;
+				crossedHardEdge = true;
+			}
+			else if (currentYBeforeDelta < bottom && m_y > bottom) {
+				edgeY = bottom;
+				crossedHardEdge = true;
+			}
+
+			if (crossedHardEdge) {
+				std::ostringstream debug;
+				debug << "secondary-hard-edge-gate"
+					  << " activeClient=" << getName(m_active)
+					  << " activeLayout=" << m_activeLayoutScreenId
+					  << " sourceScreen=" << sourceScreen->m_id
+					  << " delta=" << dx << "," << dy
+					  << " current=" << currentXBeforeDelta << "," << currentYBeforeDelta
+					  << " requested=" << m_x << "," << m_y
+					  << " edge=" << edgeX << "," << edgeY
+					  << " physicalScreen=" << sx << "," << sy << " " << sw << "x" << sh;
+				appendObjectLayoutDebugLog(debug.str());
+				LOG((CLOG_INFO
+					"object-layout hard-edge gate activeHost=%s sourceScreen=%s current=%d,%d delta=%d,%d requested=%d,%d edge=%d,%d",
+					getName(m_active).c_str(), sourceScreen->m_id.c_str(),
+					currentXBeforeDelta, currentYBeforeDelta,
+					dx, dy, m_x, m_y, edgeX, edgeY));
+				m_x = edgeX;
+				m_y = edgeY;
+				m_active->mouseMove(m_x, m_y);
+				return;
+			}
+		}
+	}
 
 	if (usingObjectLayout() && trySwitchUsingObjectLayout(m_x, m_y, false)) {
 		return;

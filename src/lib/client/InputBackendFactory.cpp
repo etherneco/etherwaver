@@ -151,6 +151,12 @@ bool queryCursorPositionServer(SInt32& x, SInt32& y)
 #endif
 }
 
+SInt32 cursorGuardInset(SInt32 size)
+{
+    static const SInt32 kGuardInset = 16;
+    return std::min<SInt32>(kGuardInset, std::max<SInt32>(0, (size - 1) / 2));
+}
+
 void writeUhidDebugStatusLine(const char* line)
 {
     const std::string path = uhidDebugStatusPath();
@@ -1072,17 +1078,17 @@ private:
         m_reportedCursorX = std::min<SInt32>(std::max<SInt32>(requestedX, left), right);
         m_reportedCursorY = std::min<SInt32>(std::max<SInt32>(requestedY, top), bottom);
 
-        if (requestedX < left) {
+        if (requestedX <= left) {
             m_reportedCursorX = left;
         }
-        else if (requestedX > right) {
+        else if (requestedX >= right) {
             m_reportedCursorX = right;
         }
 
-        if (requestedY < top) {
+        if (requestedY <= top) {
             m_reportedCursorY = top;
         }
-        else if (requestedY > bottom) {
+        else if (requestedY >= bottom) {
             m_reportedCursorY = bottom;
         }
     }
@@ -1184,13 +1190,10 @@ private:
             return;
         }
 
-        static const SInt32 kGuardInset = 16;
-        const SInt32 minX = m_activeX + std::min<SInt32>(kGuardInset, std::max<SInt32>(0, (m_activeW - 1) / 2));
-        const SInt32 minY = m_activeY + std::min<SInt32>(kGuardInset, std::max<SInt32>(0, (m_activeH - 1) / 2));
-        const SInt32 maxX = m_activeX + m_activeW - 1 -
-            std::min<SInt32>(kGuardInset, std::max<SInt32>(0, (m_activeW - 1) / 2));
-        const SInt32 maxY = m_activeY + m_activeH - 1 -
-            std::min<SInt32>(kGuardInset, std::max<SInt32>(0, (m_activeH - 1) / 2));
+        const SInt32 minX = m_activeX + cursorGuardInset(m_activeW);
+        const SInt32 minY = m_activeY + cursorGuardInset(m_activeH);
+        const SInt32 maxX = m_activeX + m_activeW - 1 - cursorGuardInset(m_activeW);
+        const SInt32 maxY = m_activeY + m_activeH - 1 - cursorGuardInset(m_activeH);
 
         x = std::max<SInt32>(minX, std::min<SInt32>(maxX, x));
         y = std::max<SInt32>(minY, std::min<SInt32>(maxY, y));

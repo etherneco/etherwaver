@@ -688,10 +688,17 @@ TEST(ServerLayoutMappingTests, objectLayoutServerSimulationSwitchesAcrossStacked
     server.onMouseMoveSecondaryForTest(120, 0);
     ASSERT_EQ(&mamre, server.getActiveClientForTest());
 
-    server.onMouseMoveSecondaryForTest(-200, 0);
-    EXPECT_EQ(&siloe, server.getActiveClientForTest());
-    EXPECT_EQ("Siloe:Siloe-1", server.getActiveLayoutScreenIdForTest());
-    EXPECT_EQ(1895, siloe.m_lastEnterX);
+	server.onMouseMoveSecondaryForTest(-200, 0);
+	EXPECT_EQ(&mamre, server.getActiveClientForTest());
+	EXPECT_EQ("mamre:mamre-2", server.getActiveLayoutScreenIdForTest());
+	ASSERT_FALSE(mamre.m_mouseMoves.empty());
+	EXPECT_EQ(0, mamre.m_mouseMoves.back().first);
+	EXPECT_EQ(1018, mamre.m_mouseMoves.back().second);
+
+	server.onMouseMoveSecondaryForTest(-1, 0);
+	EXPECT_EQ(&siloe, server.getActiveClientForTest());
+	EXPECT_EQ("Siloe:Siloe-1", server.getActiveLayoutScreenIdForTest());
+	EXPECT_EQ(1895, siloe.m_lastEnterX);
     EXPECT_EQ(509, siloe.m_lastEnterY);
 }
 
@@ -738,10 +745,17 @@ TEST(ServerLayoutMappingTests, primaryMovementAwayFromReturnEdgeClearsRecentReve
     server.onMouseMoveSecondaryForTest(120, 0);
     ASSERT_EQ(&mamre, server.getActiveClientForTest());
 
-    server.onMouseMoveSecondaryForTest(-200, 0);
-    EXPECT_EQ(&siloe, server.getActiveClientForTest());
-    EXPECT_EQ("Siloe:Siloe-1", server.getActiveLayoutScreenIdForTest());
-    EXPECT_EQ(1895, siloe.m_lastEnterX);
+	server.onMouseMoveSecondaryForTest(-200, 0);
+	EXPECT_EQ(&mamre, server.getActiveClientForTest());
+	EXPECT_EQ("mamre:mamre-1", server.getActiveLayoutScreenIdForTest());
+	ASSERT_FALSE(mamre.m_mouseMoves.empty());
+	EXPECT_EQ(0, mamre.m_mouseMoves.back().first);
+	EXPECT_EQ(540, mamre.m_mouseMoves.back().second);
+
+	server.onMouseMoveSecondaryForTest(-1, 0);
+	EXPECT_EQ(&siloe, server.getActiveClientForTest());
+	EXPECT_EQ("Siloe:Siloe-1", server.getActiveLayoutScreenIdForTest());
+	EXPECT_EQ(1895, siloe.m_lastEnterX);
     EXPECT_EQ(540, siloe.m_lastEnterY);
 
     EXPECT_FALSE(server.trySwitchUsingObjectLayoutForTest(1920, 540, true));

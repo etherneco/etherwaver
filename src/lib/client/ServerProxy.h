@@ -71,6 +71,7 @@ protected:
 private:
     // if compressing mouse motion then send the last motion now
     void                flushCompressedMouse();
+    void                snapCursorToLeaveEdge();
 
     void                sendInfo(const ClientInfo&);
 

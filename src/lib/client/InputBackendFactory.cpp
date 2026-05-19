@@ -151,12 +151,6 @@ bool queryCursorPositionServer(SInt32& x, SInt32& y)
 #endif
 }
 
-SInt32 cursorGuardInset(SInt32 size)
-{
-    static const SInt32 kGuardInset = 16;
-    return std::min<SInt32>(kGuardInset, std::max<SInt32>(0, (size - 1) / 2));
-}
-
 void writeUhidDebugStatusLine(const char* line)
 {
     const std::string path = uhidDebugStatusPath();
@@ -596,9 +590,6 @@ public:
 
         LOG((CLOG_INFO "uhid: enter cursor at %d,%d bounds=%d,%d %dx%d",
             xAbs, yAbs, m_activeX, m_activeY, m_activeW, m_activeH));
-        if (m_hasActiveBounds) {
-            showDebugBoundsOverlay(m_activeX, m_activeY, m_activeW, m_activeH);
-        }
         writeDebugStatus("enter");
     }
 
@@ -670,6 +661,9 @@ public:
             writeDebugStatus("ignored-post-enter-move");
             return;
         }
+        if (moveToHardEdgeIfRequested(requestedX, requestedY, "hard-edge-absolute")) {
+            return;
+        }
         clampToActiveBounds(xAbs, yAbs);
         if (requestedX != xAbs || requestedY != yAbs) {
             LOG((CLOG_DEBUG2
@@ -696,6 +690,9 @@ public:
         SInt32 yAbs = m_cursorY + dy;
         const SInt32 requestedX = xAbs;
         const SInt32 requestedY = yAbs;
+        if (moveToHardEdgeIfRequested(requestedX, requestedY, "hard-edge-relative")) {
+            return;
+        }
         clampToActiveBounds(xAbs, yAbs);
         if (requestedX != xAbs || requestedY != yAbs) {
             LOG((CLOG_DEBUG2
@@ -767,38 +764,20 @@ private:
         const SInt32 right = m_activeX + m_activeW - 1;
         const SInt32 top = m_activeY;
         const SInt32 bottom = m_activeY + m_activeH - 1;
-        const SInt32 horizontalThreshold =
-            std::min<SInt32>(96, std::max<SInt32>(16, m_activeW / 8));
-        const SInt32 verticalThreshold =
-            std::min<SInt32>(96, std::max<SInt32>(16, m_activeH / 8));
-
-        EdgeTarget bestEdge = kNoEdgeTarget;
-        SInt32 bestDistance = std::max<SInt32>(horizontalThreshold, verticalThreshold) + 1;
-
-        const SInt32 leftDistance = std::abs(x - left);
-        if (leftDistance <= horizontalThreshold && leftDistance < bestDistance) {
-            bestDistance = leftDistance;
-            bestEdge = kLeftEdgeTarget;
+        if (x == left) {
+            return kLeftEdgeTarget;
+        }
+        if (x == right) {
+            return kRightEdgeTarget;
+        }
+        if (y == top) {
+            return kTopEdgeTarget;
+        }
+        if (y == bottom) {
+            return kBottomEdgeTarget;
         }
 
-        const SInt32 rightDistance = std::abs(right - x);
-        if (rightDistance <= horizontalThreshold && rightDistance < bestDistance) {
-            bestDistance = rightDistance;
-            bestEdge = kRightEdgeTarget;
-        }
-
-        const SInt32 topDistance = std::abs(y - top);
-        if (topDistance <= verticalThreshold && topDistance < bestDistance) {
-            bestDistance = topDistance;
-            bestEdge = kTopEdgeTarget;
-        }
-
-        const SInt32 bottomDistance = std::abs(bottom - y);
-        if (bottomDistance <= verticalThreshold && bottomDistance < bestDistance) {
-            bestEdge = kBottomEdgeTarget;
-        }
-
-        return bestEdge;
+        return kNoEdgeTarget;
     }
 
     void forceEdgeEnterPosition(EdgeTarget edge, SInt32 targetX, SInt32 targetY)
@@ -893,27 +872,19 @@ private:
         const SInt32 right = m_activeX + m_activeW - 1;
         const SInt32 top = m_activeY;
         const SInt32 bottom = m_activeY + m_activeH - 1;
-        const SInt32 horizontalThreshold =
-            std::min<SInt32>(96, std::max<SInt32>(16, m_activeW / 8));
-        const SInt32 verticalThreshold =
-            std::min<SInt32>(96, std::max<SInt32>(16, m_activeH / 8));
 
         switch (m_enterEdgeTarget) {
         case kLeftEdgeTarget:
-            return (x >= right - horizontalThreshold &&
-                    std::abs(y - m_enterTargetY) <= verticalThreshold);
+            return x == right && y == m_enterTargetY;
 
         case kRightEdgeTarget:
-            return (x <= left + horizontalThreshold &&
-                    std::abs(y - m_enterTargetY) <= verticalThreshold);
+            return x == left && y == m_enterTargetY;
 
         case kTopEdgeTarget:
-            return (y >= bottom - verticalThreshold &&
-                    std::abs(x - m_enterTargetX) <= horizontalThreshold);
+            return y == bottom && x == m_enterTargetX;
 
         case kBottomEdgeTarget:
-            return (y <= top + verticalThreshold &&
-                    std::abs(x - m_enterTargetX) <= horizontalThreshold);
+            return y == top && x == m_enterTargetX;
 
         case kNoEdgeTarget:
             break;
@@ -924,63 +895,15 @@ private:
 
     bool isFarFromEnteredEdgeAfterEdgeEnter(SInt32 x, SInt32 y) const
     {
-        if (m_enterEdgeTarget == kNoEdgeTarget || !m_hasActiveBounds) {
-            return false;
-        }
-
-        const SInt32 left = m_activeX;
-        const SInt32 right = m_activeX + m_activeW - 1;
-        const SInt32 top = m_activeY;
-        const SInt32 bottom = m_activeY + m_activeH - 1;
-        const SInt32 horizontalThreshold =
-            std::min<SInt32>(512, std::max<SInt32>(128, m_activeW / 8));
-        const SInt32 verticalThreshold =
-            std::min<SInt32>(512, std::max<SInt32>(128, m_activeH / 8));
-
-        switch (m_enterEdgeTarget) {
-        case kLeftEdgeTarget:
-            return x > left + horizontalThreshold;
-
-        case kRightEdgeTarget:
-            return x < right - horizontalThreshold;
-
-        case kTopEdgeTarget:
-            return y > top + verticalThreshold;
-
-        case kBottomEdgeTarget:
-            return y < bottom - verticalThreshold;
-
-        case kNoEdgeTarget:
-            break;
-        }
-
+        (void)x;
+        (void)y;
         return false;
     }
 
     bool isFarAlongEnteredEdgeAfterEdgeEnter(SInt32 x, SInt32 y) const
     {
-        if (m_enterEdgeTarget == kNoEdgeTarget || !m_hasActiveBounds) {
-            return false;
-        }
-
-        const SInt32 horizontalThreshold =
-            std::min<SInt32>(512, std::max<SInt32>(128, m_activeW / 8));
-        const SInt32 verticalThreshold =
-            std::min<SInt32>(512, std::max<SInt32>(128, m_activeH / 8));
-
-        switch (m_enterEdgeTarget) {
-        case kLeftEdgeTarget:
-        case kRightEdgeTarget:
-            return std::abs(y - m_enterTargetY) > verticalThreshold;
-
-        case kTopEdgeTarget:
-        case kBottomEdgeTarget:
-            return std::abs(x - m_enterTargetX) > horizontalThreshold;
-
-        case kNoEdgeTarget:
-            break;
-        }
-
+        (void)x;
+        (void)y;
         return false;
     }
 
@@ -1040,7 +963,7 @@ private:
         writeDebugStatus("getCursorPos");
     }
 
-    void softSetCursorPos(SInt32 targetX, SInt32 targetY, const char* reason)
+    SoftCursorPositioner::Result softSetCursorPos(SInt32 targetX, SInt32 targetY, const char* reason)
     {
         const SoftCursorPositioner::Result result =
             SoftCursorPositioner::moveTo(
@@ -1058,7 +981,60 @@ private:
             result.m_targetX, result.m_targetY);
         m_cursorX = result.m_targetX;
         m_cursorY = result.m_targetY;
+        m_hasTrackedCursorPos = true;
         writeDebugStatus(reason);
+        return result;
+    }
+
+    bool moveToHardEdgeIfRequested(SInt32 requestedX, SInt32 requestedY, const char* reason)
+    {
+        if (!m_hasActiveBounds || m_activeW <= 0 || m_activeH <= 0) {
+            return false;
+        }
+
+        const SInt32 left = m_activeX;
+        const SInt32 top = m_activeY;
+        const SInt32 right = m_activeX + m_activeW - 1;
+        const SInt32 bottom = m_activeY + m_activeH - 1;
+
+        bool hardEdge = false;
+        SInt32 targetX = std::min<SInt32>(std::max<SInt32>(requestedX, left), right);
+        SInt32 targetY = std::min<SInt32>(std::max<SInt32>(requestedY, top), bottom);
+
+        if (requestedX <= left) {
+            targetX = left;
+            hardEdge = true;
+        }
+        else if (requestedX >= right) {
+            targetX = right;
+            hardEdge = true;
+        }
+        if (requestedY <= top) {
+            targetY = top;
+            hardEdge = true;
+        }
+        else if (requestedY >= bottom) {
+            targetY = bottom;
+            hardEdge = true;
+        }
+
+        if (!hardEdge) {
+            return false;
+        }
+
+        const SoftCursorPositioner::Result result =
+            softSetCursorPos(targetX, targetY, reason);
+        m_ignoreUnexpectedMoveAfterEnter = false;
+        m_enterEdgeTarget = kNoEdgeTarget;
+        LOG((CLOG_INFO
+            "uhid: hard edge cursor move requested=%d,%d current=%d,%d target=%d,%d delta=%d,%d reported=%d,%d bounds=%d,%d %dx%d",
+            requestedX, requestedY,
+            result.m_currentX, result.m_currentY,
+            result.m_targetX, result.m_targetY,
+            result.m_deltaX, result.m_deltaY,
+            m_reportedCursorX, m_reportedCursorY,
+            m_activeX, m_activeY, m_activeW, m_activeH));
+        return true;
     }
 
     void updateReportedCursorPos(
@@ -1190,10 +1166,10 @@ private:
             return;
         }
 
-        const SInt32 minX = m_activeX + cursorGuardInset(m_activeW);
-        const SInt32 minY = m_activeY + cursorGuardInset(m_activeH);
-        const SInt32 maxX = m_activeX + m_activeW - 1 - cursorGuardInset(m_activeW);
-        const SInt32 maxY = m_activeY + m_activeH - 1 - cursorGuardInset(m_activeH);
+        const SInt32 minX = m_activeX;
+        const SInt32 minY = m_activeY;
+        const SInt32 maxX = m_activeX + m_activeW - 1;
+        const SInt32 maxY = m_activeY + m_activeH - 1;
 
         x = std::max<SInt32>(minX, std::min<SInt32>(maxX, x));
         y = std::max<SInt32>(minY, std::min<SInt32>(maxY, y));

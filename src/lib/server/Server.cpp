@@ -175,34 +175,6 @@ mapInclusiveCoordinate(int value, int srcMin, int srcMax, int dstMin, int dstMax
     return dstMin + (srcOffset * dstSpan) / srcSpan;
 }
 
-static int
-applyTransitionInset(int value, int minValue, int maxValue, EDirection direction)
-{
-    static const int kTransitionInset = 24;
-    if (maxValue <= minValue) {
-        return minValue;
-    }
-
-    switch (direction) {
-    case kLeft:
-        return std::min<int>(value, maxValue - kTransitionInset);
-
-    case kRight:
-        return std::max<int>(value, minValue + kTransitionInset);
-
-    case kTop:
-        return std::min<int>(value, maxValue - kTransitionInset);
-
-    case kBottom:
-        return std::max<int>(value, minValue + kTransitionInset);
-
-    case kNoDirection:
-        return value;
-    }
-
-    return value;
-}
-
 static void
 snapGlobalCoordinateToDestinationEdge(const etherwaver::layout::Screen& destination,
                                       EDirection direction,
@@ -1320,11 +1292,6 @@ etherwaver::server::resolveObjectLayoutTargetForTest(
                                  dy, dh);
     targetX = clampInt(targetX, dx, dx + dw - 1);
     targetY = clampInt(targetY, dy, dy + dh - 1);
-    targetX = clampInt(applyTransitionInset(targetX, dx, dx + dw - 1, direction),
-                       dx, dx + dw - 1);
-    targetY = clampInt(applyTransitionInset(targetY, dy, dy + dh - 1, direction),
-                       dy, dy + dh - 1);
-
     return destinationScreen;
 }
 
@@ -1956,11 +1923,6 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
                                         dy, dh);
     targetX = clampInt(targetX, dx, dx + dw - 1);
     targetY = clampInt(targetY, dy, dy + dh - 1);
-    targetX = clampInt(applyTransitionInset(targetX, dx, dx + dw - 1, direction),
-                       dx, dx + dw - 1);
-    targetY = clampInt(applyTransitionInset(targetY, dy, dy + dh - 1, direction),
-                       dy, dy + dh - 1);
-
     LOG((CLOG_INFO
         "object-layout target sourceScreen=%s destinationScreen=%s destinationRect=%d,%d %dx%d target=%d,%d direction=%s",
         sourceScreen->m_id.c_str(),
@@ -2164,32 +2126,26 @@ Server::clearRecentReverseSwitchIfMovedAway(SInt32 x, SInt32 y)
         return;
     }
 
-    static const SInt32 kClearInset = 96;
-    const SInt32 insetX = std::min<SInt32>(kClearInset,
-        std::max<SInt32>(16, (sw - 1) / 4));
-    const SInt32 insetY = std::min<SInt32>(kClearInset,
-        std::max<SInt32>(16, (sh - 1) / 4));
-
     bool movedAway = false;
     switch (m_recentSwitchDirection) {
     case kLeft:
         // Entered through the destination right edge.
-        movedAway = (x <= sx + sw - 1 - insetX);
+        movedAway = (x < sx + sw - 1);
         break;
 
     case kRight:
         // Entered through the destination left edge.
-        movedAway = (x >= sx + insetX);
+        movedAway = (x > sx);
         break;
 
     case kTop:
         // Entered through the destination bottom edge.
-        movedAway = (y <= sy + sh - 1 - insetY);
+        movedAway = (y < sy + sh - 1);
         break;
 
     case kBottom:
         // Entered through the destination top edge.
-        movedAway = (y >= sy + insetY);
+        movedAway = (y > sy);
         break;
 
     case kNoDirection:

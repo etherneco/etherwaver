@@ -487,7 +487,7 @@ TEST(ServerLayoutMappingTests, leftEdgeFromSiloeMapsToStackedMamreMonitor)
     EXPECT_EQ(kLeft, direction);
     ASSERT_NE(static_cast<const Screen*>(NULL), resolved);
     EXPECT_EQ("mamre:mamre-1", resolved->m_id);
-    EXPECT_EQ(3815, targetX);
+    EXPECT_EQ(3838, targetX);
     EXPECT_EQ(2360, targetY);
 
     resolved = resolveObjectLayoutTargetForTest(
@@ -502,7 +502,7 @@ TEST(ServerLayoutMappingTests, leftEdgeFromSiloeMapsToStackedMamreMonitor)
     EXPECT_EQ(kRight, direction);
     ASSERT_NE(static_cast<const Screen*>(NULL), resolved);
     EXPECT_EQ("mamre:mamre-2", resolved->m_id);
-    EXPECT_EQ(24, targetX);
+    EXPECT_EQ(0, targetX);
     EXPECT_EQ(200, targetY);
 }
 
@@ -540,7 +540,7 @@ TEST(ServerLayoutMappingTests, rightEdgeFromSiloeUsesLeftEdgeOfLinkedMamreMonito
     EXPECT_EQ(kRight, direction);
     ASSERT_NE(static_cast<const Screen*>(NULL), resolved);
     EXPECT_EQ("mamre:mamre-2", resolved->m_id);
-    EXPECT_EQ(24, targetX);
+    EXPECT_EQ(0, targetX);
     EXPECT_EQ(200, targetY);
 }
 
@@ -578,7 +578,7 @@ TEST(ServerLayoutMappingTests, rightEdgeFromStackedMamreBottomMonitorMapsToSiloe
     EXPECT_EQ(kRight, direction);
     ASSERT_NE(static_cast<const Screen*>(NULL), resolved);
     EXPECT_EQ("Siloe:Siloe-1", resolved->m_id);
-    EXPECT_EQ(24, targetX);
+    EXPECT_EQ(0, targetX);
     EXPECT_EQ(100, targetY);
 }
 
@@ -616,7 +616,7 @@ TEST(ServerLayoutMappingTests, leftEdgeFromStackedMamreTopMonitorMapsBackToSiloe
     EXPECT_EQ(kLeft, direction);
     ASSERT_NE(static_cast<const Screen*>(NULL), resolved);
     EXPECT_EQ("Siloe:Siloe-1", resolved->m_id);
-    EXPECT_EQ(1895, targetX);
+    EXPECT_EQ(1919, targetX);
     EXPECT_EQ(509, targetY);
 }
 
@@ -665,14 +665,14 @@ TEST(ServerLayoutMappingTests, objectLayoutServerSimulationSwitchesAcrossStacked
     EXPECT_EQ(&siloe, server.getActiveClientForTest());
     EXPECT_EQ("Siloe:Siloe-1", server.getActiveLayoutScreenIdForTest());
     EXPECT_TRUE(siloe.m_entered);
-    EXPECT_EQ(24, siloe.m_lastEnterX);
+    EXPECT_EQ(0, siloe.m_lastEnterX);
     EXPECT_EQ(100, siloe.m_lastEnterY);
 
     ASSERT_TRUE(server.trySwitchUsingObjectLayoutForTest(1920, 509, true));
     EXPECT_EQ(&mamre, server.getActiveClientForTest());
     EXPECT_EQ("mamre:mamre-2", server.getActiveLayoutScreenIdForTest());
     EXPECT_TRUE(mamre.m_entered);
-    EXPECT_EQ(24, mamre.m_lastEnterX);
+    EXPECT_EQ(0, mamre.m_lastEnterX);
     EXPECT_EQ(1018, mamre.m_lastEnterY);
 
     EXPECT_FALSE(server.trySwitchUsingObjectLayoutForTest(-1, 1018, false));
@@ -698,7 +698,7 @@ TEST(ServerLayoutMappingTests, objectLayoutServerSimulationSwitchesAcrossStacked
 	server.onMouseMoveSecondaryForTest(-1, 0);
 	EXPECT_EQ(&siloe, server.getActiveClientForTest());
 	EXPECT_EQ("Siloe:Siloe-1", server.getActiveLayoutScreenIdForTest());
-	EXPECT_EQ(1895, siloe.m_lastEnterX);
+		EXPECT_EQ(1919, siloe.m_lastEnterX);
     EXPECT_EQ(509, siloe.m_lastEnterY);
 }
 
@@ -755,7 +755,7 @@ TEST(ServerLayoutMappingTests, primaryMovementAwayFromReturnEdgeClearsRecentReve
 	server.onMouseMoveSecondaryForTest(-1, 0);
 	EXPECT_EQ(&siloe, server.getActiveClientForTest());
 	EXPECT_EQ("Siloe:Siloe-1", server.getActiveLayoutScreenIdForTest());
-	EXPECT_EQ(1895, siloe.m_lastEnterX);
+		EXPECT_EQ(1919, siloe.m_lastEnterX);
     EXPECT_EQ(540, siloe.m_lastEnterY);
 
     EXPECT_FALSE(server.trySwitchUsingObjectLayoutForTest(1920, 540, true));
@@ -807,14 +807,14 @@ TEST(ServerLayoutMappingTests, siloeCanReenterMamreAfterRemoteMovementAndReturn)
     ASSERT_TRUE(server.trySwitchUsingObjectLayoutForTest(1920, 540, true));
     EXPECT_EQ(&mamre, server.getActiveClientForTest());
     EXPECT_EQ("mamre:mamre-1", server.getActiveLayoutScreenIdForTest());
-    EXPECT_EQ(24, mamre.m_lastEnterX);
+    EXPECT_EQ(0, mamre.m_lastEnterX);
     EXPECT_EQ(540, mamre.m_lastEnterY);
 
     server.onMouseMoveSecondaryForTest(220, 20);
     server.onMouseMoveSecondaryForTest(100, -10);
     ASSERT_EQ(&mamre, server.getActiveClientForTest());
     ASSERT_GE(mamre.m_mouseMoves.size(), 2u);
-    EXPECT_EQ(344, mamre.m_mouseMoves.back().first);
+    EXPECT_EQ(320, mamre.m_mouseMoves.back().first);
     EXPECT_EQ(550, mamre.m_mouseMoves.back().second);
 
     server.onMouseMoveSecondaryForTest(-400, 0);
@@ -827,7 +827,7 @@ TEST(ServerLayoutMappingTests, siloeCanReenterMamreAfterRemoteMovementAndReturn)
     server.onMouseMoveSecondaryForTest(-1, 0);
     EXPECT_EQ(&siloe, server.getActiveClientForTest());
     EXPECT_EQ("Siloe:Siloe-1", server.getActiveLayoutScreenIdForTest());
-    EXPECT_EQ(1895, siloe.m_lastEnterX);
+    EXPECT_EQ(1919, siloe.m_lastEnterX);
     EXPECT_EQ(550, siloe.m_lastEnterY);
 
     server.onMouseMovePrimaryForTest(1700, 550);
@@ -835,7 +835,7 @@ TEST(ServerLayoutMappingTests, siloeCanReenterMamreAfterRemoteMovementAndReturn)
     EXPECT_TRUE(server.trySwitchUsingObjectLayoutForTest(1920, 550, true));
     EXPECT_EQ(&mamre, server.getActiveClientForTest());
     EXPECT_EQ("mamre:mamre-1", server.getActiveLayoutScreenIdForTest());
-    EXPECT_EQ(24, mamre.m_lastEnterX);
+    EXPECT_EQ(0, mamre.m_lastEnterX);
     EXPECT_EQ(550, mamre.m_lastEnterY);
 }
 
@@ -880,7 +880,7 @@ TEST(ServerLayoutMappingTests, sameClientLogicalSwitchSendsEnterSoClientRefreshe
     EXPECT_EQ(&mamre, server.getActiveClientForTest());
     EXPECT_EQ("mamre:mamre-2", server.getActiveLayoutScreenIdForTest());
     EXPECT_TRUE(mamre.m_entered);
-    EXPECT_EQ(1944, mamre.m_lastEnterX);
+    EXPECT_EQ(1920, mamre.m_lastEnterX);
     EXPECT_EQ(100, mamre.m_lastEnterY);
     EXPECT_TRUE(mamre.m_mouseMoves.empty());
 }

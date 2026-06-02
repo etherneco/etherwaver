@@ -28,6 +28,29 @@
 #include <QHBoxLayout>
 #include <QPushButton>
 
+namespace {
+
+QString ensureScreenNumberSuffix(const QString& screenName)
+{
+    const QString trimmed = screenName.trimmed();
+    if (trimmed.isEmpty()) {
+        return trimmed;
+    }
+
+    const int dashPos = trimmed.lastIndexOf('-');
+    if (dashPos > 0 && dashPos + 1 < trimmed.length()) {
+        bool ok = false;
+        const int number = trimmed.mid(dashPos + 1).toInt(&ok);
+        if (ok && number > 0) {
+            return trimmed;
+        }
+    }
+
+    return trimmed + "-1";
+}
+
+} // namespace
+
 ServerConfigDialog::ServerConfigDialog(QWidget* parent, ServerConfig& config, const QString& defaultScreenName) :
     QDialog(parent, Qt::WindowTitleHint | Qt::WindowSystemMenuHint),
     Ui::ServerConfigDialogBase(),
@@ -68,7 +91,7 @@ ServerConfigDialog::ServerConfigDialog(QWidget* parent, ServerConfig& config, co
     }
 
     if (serverConfig().numScreens() == 0 && !serverConfig().screens().empty()) {
-        serverConfig().screens()[0] = Screen(defaultScreenName);
+        serverConfig().screens()[0] = Screen(ensureScreenNumberSuffix(defaultScreenName));
     }
 
     m_pTrashScreenWidget->hide();

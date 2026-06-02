@@ -320,9 +320,12 @@ private:
     // m_hasMouse is true iff there's a mouse attached to the system or
     // MouseKeys is simulating one.  we track this so we can force the
     // cursor to be displayed when the user has entered this screen.
-    // m_showingMouse is true when we're doing that.
+    // m_showingMouse is true when we're doing that.  m_showCursorForceCount
+    // tracks direct ShowCursor(TRUE) calls made while this screen is active
+    // so we can balance them when the cursor leaves again.
     bool                m_hasMouse;
     bool                m_showingMouse;
+    int                 m_showCursorForceCount;
     bool                m_gotOldMouseKeys;
     MOUSEKEYS            m_mouseKeys;
     MOUSEKEYS            m_oldMouseKeys;

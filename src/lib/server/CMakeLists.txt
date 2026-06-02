@@ -23,7 +23,7 @@ endif()
 
 add_library(server STATIC ${sources})
 
-target_link_libraries(server core)
+target_link_libraries(server core platform)
 
 if (UNIX)
     target_link_libraries(server synlib)

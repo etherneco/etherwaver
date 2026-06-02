@@ -9,6 +9,8 @@ config.h
 /bin
 /lib
 /build
+/build-debug/
+/build-tests/
 /CMakeFiles
 /ext/cryptopp562
 /ext/openssl
@@ -32,3 +34,5 @@ CMakeCache.txt
 # Transient in-project-directory dependencies
 /deps/
 /out/build/x64-Debug
+debug.logs.txt
+logs.txt

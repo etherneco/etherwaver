@@ -61,6 +61,7 @@ public:
     virtual void        screensaver(bool activate);
     virtual void        resetOptions();
     virtual void        setOptions(const OptionsList& options);
+    virtual void        sendLayoutSnapshot(const std::string& layoutJson);
     virtual void        sendDragInfo(UInt32 fileCount, const char* info, size_t size);
     virtual void        fileChunkSending(UInt8 mark, char* data, size_t dataSize);
 

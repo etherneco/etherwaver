@@ -71,6 +71,7 @@ protected:
 private:
     // if compressing mouse motion then send the last motion now
     void                flushCompressedMouse();
+    void                snapCursorToLeaveEdge();
 
     void                sendInfo(const ClientInfo&);
 
@@ -101,6 +102,7 @@ private:
     void                screensaver();
     void                resetOptions();
     void                setOptions();
+    void                layoutSnapshot();
     void                queryInfo();
     void                infoAcknowledgment();
     void                fileChunkReceived();

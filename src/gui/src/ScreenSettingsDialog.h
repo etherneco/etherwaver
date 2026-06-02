@@ -43,11 +43,13 @@ class ScreenSettingsDialog : public QDialog, public Ui::ScreenSettingsDialogBase
         void on_m_pButtonAddAlias_clicked();
         void on_m_pButtonRemoveAlias_clicked();
         void on_m_pLineEditAlias_textChanged(const QString& text);
+        void on_m_pLineEditName_textChanged(const QString& text);
         void on_m_pListAliases_itemSelectionChanged();
 
     private:
         QString composedScreenName() const;
         void splitScreenName(const QString& fullName, QString& baseName, int& number) const;
+        void normalizeNameWidgets(const QString& rawName, int rawNumber);
 
     private:
         Screen* m_pScreen;

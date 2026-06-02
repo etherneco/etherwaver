@@ -42,7 +42,7 @@ endif()
 add_executable(wavers ${sources})
 set_target_properties(wavers PROPERTIES OUTPUT_NAME "wavers")
 target_link_libraries(wavers
-    arch base client common io mt net ipc platform server synlib ${libs} ${OPENSSL_LIBS})
+    arch base client common io mt net ipc server platform synlib ${libs} ${OPENSSL_LIBS})
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     install (TARGETS wavers DESTINATION ${BARRIER_BUNDLE_BINARY_DIR})

@@ -247,15 +247,32 @@ Client::getScreens(std::vector<ClientScreenInfo>& screens) const
 void
 Client::getCursorPos(SInt32& x, SInt32& y) const
 {
-    m_screen->getCursorPos(x, y);
+    if (!m_inputBackend->getCursorPos(x, y)) {
+        m_screen->getCursorPos(x, y);
+    }
 }
 
 void
 Client::enter(SInt32 xAbs, SInt32 yAbs, UInt32, KeyModifierMask mask, bool)
 {
+    LOG((CLOG_INFO "client enter at %d,%d backendManagesCursor=%s moveAfterEnter=%s",
+        xAbs, yAbs,
+        m_inputBackend->managesCursorVisibility() ? "yes" : "no",
+        m_inputBackend->movesCursorAfterScreenEnter() ? "yes" : "no"));
+
     m_active = true;
-    m_inputBackend->enter(xAbs, yAbs);
-    m_screen->enter(mask);
+    if (m_inputBackend->movesCursorAfterScreenEnter()) {
+        m_screen->enter(mask);
+        m_inputBackend->enter(xAbs, yAbs);
+    }
+    else if (m_inputBackend->managesCursorVisibility()) {
+        m_screen->enter(mask);
+        m_inputBackend->enter(xAbs, yAbs);
+    }
+    else {
+        m_inputBackend->enter(xAbs, yAbs);
+        m_screen->enter(mask);
+    }
 
     if (m_sendFileThread != NULL) {
         StreamChunker::interruptFile();
@@ -268,8 +285,14 @@ Client::leave()
 {
     m_active = false;
 
-    m_inputBackend->leave();
-    m_screen->leave();
+    if (m_inputBackend->managesCursorVisibility()) {
+        m_screen->leave();
+        m_inputBackend->leave();
+    }
+    else {
+        m_inputBackend->leave();
+        m_screen->leave();
+    }
 
     if (m_enableClipboard) {
         // send clipboards that we own and that have changed

@@ -208,6 +208,9 @@ public:
                               unsigned int group) = 0;
     virtual int XDisplayKeycodes(Display* display, int* min_keycodes_return,
                                  int* max_keycodes_return) = 0;
+    virtual XRRMonitorInfo* XRRGetMonitors(Display* display, Window window,
+                                           Bool get_active, int* nmonitors) = 0;
+    virtual void XRRFreeMonitors(XRRMonitorInfo* monitors) = 0;
     virtual KeySym* XGetKeyboardMapping(Display* display,
                                         unsigned int first_keycode,
                                         int keycode_count,

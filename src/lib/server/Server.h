@@ -33,7 +33,9 @@
 #include "common/stdset.h"
 #include "common/stdvector.h"
 #include "core/layout/ScreenManager.h"
+#include "platform/UhidEdgeTransitionService.h"
 
+#include <memory>
 #include <mutex>
 #include <thread>
 
@@ -45,6 +47,44 @@ namespace barrier { class Screen; }
 class IEventQueue;
 class Thread;
 class ClientListener;
+
+namespace etherwaver {
+namespace server {
+bool selectClientScreenForLayoutScreenForTest(
+    const etherwaver::layout::ScreenManager& layout,
+    const std::vector<ClientScreenInfo>& screens,
+    const etherwaver::layout::Screen& layoutScreen,
+    SInt32& screenX, SInt32& screenY,
+    SInt32& screenW, SInt32& screenH);
+void getJumpCursorPosForLayoutScreenForTest(
+    const etherwaver::layout::ScreenManager& layout,
+    const BaseClientProxy* client,
+    const etherwaver::layout::Screen& layoutScreen,
+    SInt32& x,
+    SInt32& y);
+const etherwaver::layout::Screen* findLayoutScreenForPositionForTest(
+    const etherwaver::layout::ScreenManager& layout,
+    const std::string& hostId,
+    SInt32 screenX, SInt32 screenY, SInt32 screenW, SInt32 screenH,
+    SInt32 cursorX, SInt32 cursorY);
+const etherwaver::layout::Screen* resolveObjectLayoutDestinationForTest(
+    const etherwaver::layout::ScreenManager& layout,
+    const etherwaver::layout::Screen& sourceScreen,
+    SInt32 sourceScreenX, SInt32 sourceScreenY, SInt32 sourceScreenW, SInt32 sourceScreenH,
+    SInt32 currentScreenX, SInt32 currentScreenY, SInt32 currentScreenW, SInt32 currentScreenH,
+    SInt32 cursorX, SInt32 cursorY,
+    EDirection& direction,
+    int& globalX, int& globalY);
+const etherwaver::layout::Screen* resolveObjectLayoutTargetForTest(
+    const etherwaver::layout::ScreenManager& layout,
+    const etherwaver::layout::Screen& sourceScreen,
+    const std::vector<ClientScreenInfo>& destinationClientScreens,
+    SInt32 sourceScreenX, SInt32 sourceScreenY, SInt32 sourceScreenW, SInt32 sourceScreenH,
+    SInt32 cursorX, SInt32 cursorY,
+    EDirection& direction,
+    SInt32& targetX, SInt32& targetY);
+} // namespace server
+} // namespace etherwaver
 
 //! Barrier server
 /*!
@@ -115,9 +155,31 @@ public:
     ~Server();
 
 #ifdef BARRIER_TEST_ENV
-    Server() : m_mock(true), m_config(NULL) { }
     void setActive(BaseClientProxy* active) {    m_active = active; }
+    void setPrimaryClientForTest(PrimaryClient* client) { m_primaryClient = client; }
+    void setConfigForTest(Config* config) { m_config = config; }
+    void setEventsForTest(IEventQueue* events) { m_events = events; }
+    void setScreenLayoutForTest(const etherwaver::layout::ScreenManager& layout) { m_screenLayout = layout; }
+    void setActiveLayoutScreenIdForTest(const std::string& screenId) { m_activeLayoutScreenId = screenId; }
+    void setCursorPosForTest(SInt32 x, SInt32 y) { m_x = x; m_y = y; }
+    void addClientForTest(const std::string& name, BaseClientProxy* client) { m_clients[name] = client; }
+    BaseClientProxy* getActiveClientForTest() const { return m_active; }
+    const std::string& getActiveLayoutScreenIdForTest() const { return m_activeLayoutScreenId; }
+    const etherwaver::layout::Screen* getActiveLayoutScreenForTest() const { return getActiveLayoutScreen(); }
+    bool trySwitchUsingObjectLayoutForTest(SInt32 x, SInt32 y, bool absoluteMotion) {
+        return trySwitchUsingObjectLayout(x, y, absoluteMotion);
+    }
+    void onMouseMoveSecondaryForTest(SInt32 dx, SInt32 dy) {
+        onMouseMoveSecondary(dx, dy);
+    }
+    bool onMouseMovePrimaryForTest(SInt32 x, SInt32 y) {
+        return onMouseMovePrimary(x, y);
+    }
 #endif
+
+    // Diagnostic/test constructor. It leaves the server inert until test code
+    // injects clients, config, events, and layout.
+    Server();
 
     //! @name manipulators
     //@{
@@ -170,6 +232,16 @@ public:
     Set the \c list to the names of the currently connected clients.
     */
     void getClients(std::vector<std::string>& list) const;
+
+    //! Switch the active screen to the one identified by \p screenId.
+    /*!
+    Resolves the screen in the object layout (etherwaver-layout.json) or the
+    legacy Config, finds the owning BaseClientProxy, and performs a full
+    leave/enter transition including cursor warp and clipboard sync.
+    Returns true iff the switch was executed.
+    */
+    bool                switchToScreenName(const std::string& screenId);
+    bool                onTransition(IUhidEdgeTransitionHandler::Direction direction);
 
     //! Return true if received file size is valid
     bool                isReceivedFileSizeValid();
@@ -248,7 +320,8 @@ private:
     // options like switch delay and tracking any state required to
     // implement them.  returns true iff a switch is permitted.
     bool                isSwitchOkay(BaseClientProxy* dst, EDirection,
-                            SInt32 x, SInt32 y, SInt32 xActive, SInt32 yActive);
+                            SInt32 x, SInt32 y, SInt32 xActive, SInt32 yActive,
+                            const std::string& layoutScreenId = std::string());
 
     // update switch state due to a mouse move at \p x, \p y that
     // doesn't switch screens.
@@ -304,6 +377,17 @@ private:
                         getLayoutScreenForHost(const std::string& hostId) const;
     BaseClientProxy*    getClientForLayoutScreen(const etherwaver::layout::Screen& screen) const;
     bool                trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion);
+    void                refreshPrimaryUhidGeometry();
+    bool                trySwitchUsingUhidDirection(IUhidEdgeTransitionHandler::Direction direction);
+    void                rememberRecentObjectLayoutSwitch(BaseClientProxy* src,
+                            const std::string& srcLayoutScreenId,
+                            BaseClientProxy* dst,
+                            const std::string& dstLayoutScreenId,
+                            EDirection direction);
+    bool                isRecentReverseSwitch(BaseClientProxy* newScreen,
+                            EDirection direction,
+                            const std::string& layoutScreenId) const;
+    void                clearRecentReverseSwitchIfMovedAway(SInt32 x, SInt32 y);
 
     // event handlers
     void                handleShapeChanged(const Event&, void*);
@@ -388,6 +472,8 @@ public:
     bool                m_mock;
 
 private:
+    class UhidTransitionHandler;
+
     class ClipboardInfo {
     public:
         ClipboardInfo();
@@ -505,6 +591,15 @@ private:
     mutable std::mutex  m_mutex;
     std::string         m_currentHost;
     std::string         m_current_ip;
+    std::unique_ptr<UhidTransitionHandler> m_uhidTransitionHandler;
+    UhidEdgeTransitionService m_uhidEdgeTransitionService;
+    Stopwatch           m_recentSwitchTimer;
+    bool                m_recentSwitchArmed;
+    BaseClientProxy*    m_recentSwitchSource;
+    BaseClientProxy*    m_recentSwitchDestination;
+    std::string         m_recentSwitchSourceLayoutScreenId;
+    std::string         m_recentSwitchDestinationLayoutScreenId;
+    EDirection          m_recentSwitchDirection;
 
     void                httpLoop();
 };

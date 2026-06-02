@@ -139,13 +139,13 @@ private:
     std::string            m_commandLine;
 };
 
-#define DEFAULT_DAEMON_NAME _T("Barrier")
-#define DEFAULT_DAEMON_INFO _T("Manages the Barrier foreground processes.")
+#define DEFAULT_DAEMON_NAME _T("Waver")
+#define DEFAULT_DAEMON_INFO _T("Manages the Etherwaver foreground processes.")
 
 static const TCHAR* const g_daemonKeyPath[] = {
     _T("SOFTWARE"),
-    _T("The Barrier Project"),
-    _T("Barrier"),
+    _T("Etherneco"),
+    _T("Etherwaver"),
     _T("Service"),
     NULL
 };

@@ -58,6 +58,37 @@
 
 #define RETRY_TIME 1.0
 
+namespace {
+
+void
+logClientScreenLayout(const String& screenName, const barrier::Screen* screen)
+{
+    std::vector<ClientScreenInfo> screens;
+    screen->getScreens(screens);
+
+    LOG((CLOG_INFO "waverc monitor count: %lu",
+        static_cast<unsigned long>(screens.size())));
+
+    const String baseName = screenName.empty() ? "screen" : screenName;
+    for (std::vector<ClientScreenInfo>::const_iterator it = screens.begin();
+         it != screens.end(); ++it) {
+        const unsigned long monitorNumber =
+            static_cast<unsigned long>((it - screens.begin()) + 1);
+        std::ostringstream name;
+        name << baseName << "_" << monitorNumber;
+
+        LOG((CLOG_INFO "waverc monitor: %s %d %d %d %d system=%s",
+            name.str().c_str(),
+            it->m_x,
+            it->m_y,
+            it->m_x + it->m_w,
+            it->m_y + it->m_h,
+            it->m_id.c_str()));
+    }
+}
+
+} // namespace
+
 ClientApp::ClientApp(IEventQueue* events, CreateTaskBarReceiverFunc createTaskBarReceiver) :
     App(events, createTaskBarReceiver, new ClientArgs()),
     m_client(NULL),
@@ -404,6 +435,7 @@ ClientApp::startClient()
             m_client     = openClient(args().m_name,
                 *m_serverAddress, clientScreen);
             m_clientScreen  = clientScreen;
+            logClientScreenLayout(args().m_name, m_clientScreen);
             LOG((CLOG_NOTE "started client"));
         }
 
@@ -527,6 +559,7 @@ ClientApp::runInner(int argc, char** argv, ILogOutputter* outputter, StartupFunc
     // general initialization
     m_serverAddress = new NetworkAddress;
     argsBase().m_exename = ArgParser::parse_exename(argv[0]);
+    LOG((CLOG_INFO "waverc executable: %s", argv[0]));
 
     // install caller's output filter
     if (outputter != NULL) {

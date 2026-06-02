@@ -33,13 +33,19 @@
 #include "base/TMethodEventJob.h"
 #include "base/XBase.h"
 
+#include <algorithm>
+#include <cctype>
+#include <cstdlib>
+#include <fstream>
 #include <memory>
 #include <sstream>
+#include <string>
 
 namespace {
 
 std::string
-serializeScreenList(const std::vector<ClientScreenInfo>& screens)
+serializeScreenList(const std::string& clientName,
+                    const std::vector<ClientScreenInfo>& screens)
 {
     std::ostringstream stream;
     for (std::vector<ClientScreenInfo>::const_iterator it = screens.begin();
@@ -47,13 +53,48 @@ serializeScreenList(const std::vector<ClientScreenInfo>& screens)
         if (it != screens.begin()) {
             stream << '\n';
         }
-        stream << it->m_id << ','
+        const std::size_t screenIndex = static_cast<std::size_t>(it - screens.begin()) + 1;
+        const std::string screenId =
+            screens.size() > 1 && !clientName.empty() ?
+                (clientName + "-" + std::to_string(screenIndex)) :
+                it->m_id;
+        stream << screenId << ','
                << it->m_x << ','
                << it->m_y << ','
                << it->m_w << ','
                << it->m_h;
     }
     return stream.str();
+}
+
+std::string
+safePathComponent(const std::string& value)
+{
+    std::string result;
+    for (std::string::const_iterator it = value.begin(); it != value.end(); ++it) {
+        const unsigned char ch = static_cast<unsigned char>(*it);
+        if (std::isalnum(ch) || ch == '-' || ch == '_') {
+            result += static_cast<char>(ch);
+        }
+        else {
+            result += '_';
+        }
+    }
+    return result.empty() ? "server" : result;
+}
+
+std::string
+layoutSnapshotPath(const NetworkAddress& address)
+{
+    const char* tmpDir = std::getenv("TMPDIR");
+    std::ostringstream path;
+    path << ((tmpDir != NULL && tmpDir[0] != '\0') ? tmpDir : "/tmp")
+         << "/etherwaver-layout-"
+         << safePathComponent(address.getHostname())
+         << "-"
+         << address.getPort()
+         << ".json";
+    return path.str();
 }
 
 } // namespace
@@ -197,6 +238,10 @@ ServerProxy::parseHandshakeMessage(const UInt8* code)
         m_client->handshakeComplete();
     }
 
+    else if (memcmp(code, kMsgDLayoutSnapshot, 4) == 0) {
+        layoutSnapshot();
+    }
+
     else if (memcmp(code, kMsgCResetOptions, 4) == 0) {
         resetOptions();
     }
@@ -332,6 +377,10 @@ ServerProxy::parseMessage(const UInt8* code)
         setOptions();
     }
 
+    else if (memcmp(code, kMsgDLayoutSnapshot, 4) == 0) {
+        layoutSnapshot();
+    }
+
     else if (memcmp(code, kMsgDFileTransfer, 4) == 0) {
         fileChunkReceived();
     }
@@ -402,24 +451,111 @@ ServerProxy::onClipboardChanged(ClipboardID id, const IClipboard* clipboard)
 }
 
 void
+ServerProxy::layoutSnapshot()
+{
+    std::string payload;
+    ProtocolUtil::readf(m_stream, kMsgDLayoutSnapshot + 4, &payload);
+
+    const std::string path = layoutSnapshotPath(m_client->getServerAddress());
+    std::ofstream output(path.c_str(), std::ios::binary | std::ios::trunc);
+    if (!output) {
+        LOG((CLOG_WARN "failed to save object layout snapshot from server path=%s",
+            path.c_str()));
+        return;
+    }
+
+    output << payload;
+    output.close();
+    if (!output) {
+        LOG((CLOG_WARN "failed to finish object layout snapshot from server path=%s",
+            path.c_str()));
+        return;
+    }
+
+    LOG((CLOG_INFO "saved object layout snapshot from server path=%s bytes=%lu",
+        path.c_str(),
+        static_cast<unsigned long>(payload.size())));
+}
+
+void
 ServerProxy::flushCompressedMouse()
 {
+    bool flushed = false;
     if (m_compressMouse) {
         m_compressMouse = false;
         m_client->mouseMove(m_xMouse, m_yMouse);
+        flushed = true;
     }
     if (m_compressMouseRelative) {
         m_compressMouseRelative = false;
         m_client->mouseRelativeMove(m_dxMouse, m_dyMouse);
         m_dxMouse = 0;
         m_dyMouse = 0;
+        flushed = true;
     }
+    if (flushed) {
+        queryInfo();
+    }
+}
+
+void
+ServerProxy::snapCursorToLeaveEdge()
+{
+    SInt32 x = 0;
+    SInt32 y = 0;
+    SInt32 w = 0;
+    SInt32 h = 0;
+    m_client->getShape(x, y, w, h);
+    if (w <= 0 || h <= 0) {
+        return;
+    }
+
+    SInt32 cursorX = 0;
+    SInt32 cursorY = 0;
+    m_client->getCursorPos(cursorX, cursorY);
+
+    const SInt32 left = x;
+    const SInt32 top = y;
+    const SInt32 right = x + w - 1;
+    const SInt32 bottom = y + h - 1;
+
+    bool snap = false;
+    SInt32 targetX = cursorX;
+    SInt32 targetY = cursorY;
+    if (cursorX <= left) {
+        targetX = left;
+        snap = true;
+    }
+    else if (cursorX >= right) {
+        targetX = right;
+        snap = true;
+    }
+    if (cursorY <= top) {
+        targetY = top;
+        snap = true;
+    }
+    else if (cursorY >= bottom) {
+        targetY = bottom;
+        snap = true;
+    }
+
+    if (!snap) {
+        return;
+    }
+
+    LOG((CLOG_INFO
+        "snap cursor to leave edge cursor=%d,%d target=%d,%d bounds=%d,%d %dx%d",
+        cursorX, cursorY, targetX, targetY, x, y, w, h));
+    m_client->mouseMove(targetX, targetY);
+    queryInfo();
 }
 
 void
 ServerProxy::sendInfo(const ClientInfo& info)
 {
-    LOG((CLOG_DEBUG1 "sending info shape=%d,%d %dx%d", info.m_x, info.m_y, info.m_w, info.m_h));
+    LOG((CLOG_DEBUG1
+        "sending info shape=%d,%d %dx%d cursor=%d,%d",
+        info.m_x, info.m_y, info.m_w, info.m_h, info.m_mx, info.m_my));
     ProtocolUtil::writef(m_stream, kMsgDInfo,
                                 info.m_x, info.m_y,
                                 info.m_w, info.m_h, 0,
@@ -427,7 +563,7 @@ ServerProxy::sendInfo(const ClientInfo& info)
 
     std::vector<ClientScreenInfo> screens;
     m_client->getScreens(screens);
-    const std::string serializedScreens = serializeScreenList(screens);
+    const std::string serializedScreens = serializeScreenList(m_client->getName(), screens);
     ProtocolUtil::writef(m_stream, kMsgDScreenList, &serializedScreens);
 }
 
@@ -570,6 +706,10 @@ ServerProxy::enter()
 
     // forward
     m_client->enter(x, y, seqNum, static_cast<KeyModifierMask>(mask), false);
+
+    // Keep the server-side ClientProxy cursor cache in sync with the
+    // post-enter UHID position before the first secondary motion delta.
+    queryInfo();
 }
 
 void
@@ -580,6 +720,7 @@ ServerProxy::leave()
 
     // send last mouse motion
     flushCompressedMouse();
+    snapCursorToLeaveEdge();
 
     // forward
     m_client->leave();
@@ -759,6 +900,7 @@ ServerProxy::mouseMove()
     // forward
     if (!ignore) {
         m_client->mouseMove(x, y);
+        queryInfo();
     }
 }
 
@@ -789,6 +931,7 @@ ServerProxy::mouseRelativeMove()
     // forward
     if (!ignore) {
         m_client->mouseRelativeMove(dx, dy);
+        queryInfo();
     }
 }
 

@@ -17,14 +17,22 @@ Screen::Screen(const std::string& id,
                int x,
                int y,
                int width,
-               int height) :
+               int height,
+               const std::string& leftLink,
+               const std::string& rightLink,
+               const std::string& topLink,
+               const std::string& bottomLink) :
     m_id(id),
     m_hostId(hostId),
     m_name(name),
     m_x(x),
     m_y(y),
     m_width(width),
-    m_height(height)
+    m_height(height),
+    m_leftLink(leftLink),
+    m_rightLink(rightLink),
+    m_topLink(topLink),
+    m_bottomLink(bottomLink)
 {
 }
 

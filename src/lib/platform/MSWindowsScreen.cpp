@@ -145,6 +145,7 @@ MSWindowsScreen::MSWindowsScreen(
     m_keyState(NULL),
     m_hasMouse(GetSystemMetrics(SM_MOUSEPRESENT) != 0),
     m_showingMouse(false),
+    m_showCursorForceCount(0),
     m_events(events),
     m_dropWindow(NULL),
     m_dropWindowSize(20)
@@ -774,6 +775,9 @@ void
 MSWindowsScreen::fakeMouseMove(SInt32 x, SInt32 y)
 {
     m_desks->fakeMouseMove(x, y);
+    if (m_isOnScreen) {
+        forceShowCursor();
+    }
     if (m_buttons[kButtonLeft]) {
         m_draggingStarted = true;
     }
@@ -1384,6 +1388,7 @@ MSWindowsScreen::onMouseMove(SInt32 mx, SInt32 my)
     saveMousePosition(mx, my);
 
     if (m_isOnScreen) {
+        forceShowCursor();
 
         // motion on primary screen
         sendEvent(
@@ -1782,11 +1787,47 @@ MSWindowsScreen::updateKeysCB()
 void
 MSWindowsScreen::forceShowCursor()
 {
+    if (m_isOnScreen) {
+        CURSORINFO cursorInfo;
+        cursorInfo.cbSize = sizeof(cursorInfo);
+        const bool cursorVisible =
+            (GetCursorInfo(&cursorInfo) != 0) &&
+            ((cursorInfo.flags & CURSOR_SHOWING) != 0);
+
+        if (!cursorVisible) {
+            static const int kMaxShowCursorAdjustments = 16;
+            int count = -1;
+            int adjustments = 0;
+            while (adjustments < kMaxShowCursorAdjustments) {
+                count = ShowCursor(TRUE);
+                ++m_showCursorForceCount;
+                ++adjustments;
+
+                cursorInfo.cbSize = sizeof(cursorInfo);
+                if (GetCursorInfo(&cursorInfo) != 0 &&
+                    (cursorInfo.flags & CURSOR_SHOWING) != 0) {
+                    break;
+                }
+            }
+            LOG((CLOG_DEBUG "forced cursor show count=%d adjustments=%d",
+                count, adjustments));
+        }
+    }
+    else if (!m_isOnScreen && m_showCursorForceCount > 0) {
+        while (m_showCursorForceCount > 0) {
+            ShowCursor(FALSE);
+            --m_showCursorForceCount;
+        }
+    }
+
     // check for mouse
     m_hasMouse = (GetSystemMetrics(SM_MOUSEPRESENT) != 0);
 
-    // decide if we should show the mouse
-    bool showMouse = (!m_hasMouse && !m_isPrimary && m_isOnScreen);
+    // decide if we should show the mouse.  Object-layout can route input
+    // back onto a primary Windows host that has no local mouse attached, so
+    // primary screens need the same MouseKeys visibility workaround as
+    // secondary screens while they are active.
+    bool showMouse = (!m_hasMouse && m_isOnScreen);
 
     // show/hide the mouse
     if (showMouse != m_showingMouse) {

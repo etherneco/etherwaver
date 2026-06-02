@@ -40,12 +40,22 @@
 #include <QtGui>
 #include <QtNetwork>
 #include <QNetworkAccessManager>
+#include <QAction>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QFileDialog>
 #include <QDesktopServices>
-#include <QDesktopWidget>
+#include <QDialog>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
+#include <QLocalSocket>
+#include <QPlainTextEdit>
+#include <QScreen>
+#include <QScrollBar>
+#include <QVBoxLayout>
 
 #if defined(Q_OS_MAC)
 #include <ApplicationServices/ApplicationServices.h>
@@ -54,6 +64,10 @@
 #if defined(Q_OS_WIN)
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#endif
+
+#if defined(Q_OS_LINUX)
+#include <unistd.h>
 #endif
 
 static const QString allFilesFilter(QObject::tr("All files (*.*)"));
@@ -96,6 +110,355 @@ static const char* barrierIconNames[] =
 
 static const char* barrierLargeIcon = ":/res/icons/256x256/barrier.ico";
 
+namespace {
+
+QString persistentGuiStatePath()
+{
+    const QString profilePath = QString::fromStdString(barrier::DataDirectories::profile().u8string());
+    QDir profileDir(profilePath);
+    if (!profileDir.exists()) {
+        profileDir.mkpath(".");
+    }
+
+    return profileDir.filePath("gui-state.ini");
+}
+
+QStringList executableAliases(const QString& name)
+{
+    QStringList names;
+    names << name;
+
+    if (name == "wavers") {
+        names << "barriers" << "waverd" << "barrierd";
+    }
+    else if (name == "wavers.exe") {
+        names << "barriers.exe" << "waverd.exe" << "barrierd.exe";
+    }
+    else if (name == "waverc") {
+        names << "barrierc";
+    }
+    else if (name == "waverc.exe") {
+        names << "barrierc.exe";
+    }
+
+    names.removeDuplicates();
+    return names;
+}
+
+QString resolveExecutablePath(const QString& baseDir, const QString& name)
+{
+    const QDir appDir(baseDir);
+    const QStringList names = executableAliases(name);
+    QStringList searchDirs;
+    searchDirs << appDir.absolutePath();
+    searchDirs << appDir.absoluteFilePath("../bin");
+    searchDirs << appDir.absoluteFilePath("../cmd");
+    searchDirs << appDir.absoluteFilePath("../src/cmd");
+    searchDirs << appDir.absoluteFilePath("../../bin");
+    searchDirs << appDir.absoluteFilePath("../../cmd");
+    searchDirs << appDir.absoluteFilePath("../../src/cmd");
+
+    const QString dirName = appDir.dirName();
+    const QStringList configDirs = QStringList()
+        << "Debug"
+        << "Release"
+        << "RelWithDebInfo"
+        << "MinSizeRel";
+
+    if (configDirs.contains(dirName)) {
+        const QDir parentDir = QFileInfo(appDir.absolutePath()).dir();
+        searchDirs << parentDir.absolutePath();
+        searchDirs << parentDir.absoluteFilePath("../bin/" + dirName);
+        searchDirs << parentDir.absoluteFilePath("../../bin/" + dirName);
+        searchDirs << parentDir.absoluteFilePath("bin/" + dirName);
+    }
+
+    for (QStringList::const_iterator dirIt = searchDirs.begin(); dirIt != searchDirs.end(); ++dirIt) {
+        const QDir dir(*dirIt);
+        for (QStringList::const_iterator nameIt = names.begin(); nameIt != names.end(); ++nameIt) {
+            const QString candidate = dir.absoluteFilePath(*nameIt);
+            QFileInfo info(candidate);
+            if (info.exists() && info.isFile()) {
+                return info.absoluteFilePath();
+            }
+        }
+    }
+
+    return appDir.absoluteFilePath(name);
+}
+
+QString rectToString(const QRect& rect)
+{
+    return QString("x=%1 y=%2 w=%3 h=%4")
+        .arg(rect.x())
+        .arg(rect.y())
+        .arg(rect.width())
+        .arg(rect.height());
+}
+
+int screenIndexAt(const QList<QScreen*>& screens, const QPoint& point)
+{
+    for (int i = 0; i < screens.size(); ++i) {
+        if (screens[i]->geometry().contains(point)) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+int screenIndexOf(const QList<QScreen*>& screens, const QScreen* screen)
+{
+    for (int i = 0; i < screens.size(); ++i) {
+        if (screens[i] == screen) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+bool runDebugCommand(const QString& command, const QStringList& args, QString& output)
+{
+    QProcess process;
+    process.start(command, args);
+    if (!process.waitForStarted(50) || !process.waitForFinished(250) ||
+        process.exitStatus() != QProcess::NormalExit ||
+        process.exitCode() != 0) {
+        return false;
+    }
+
+    output = QString::fromLocal8Bit(process.readAllStandardOutput()).trimmed();
+    return !output.isEmpty();
+}
+
+bool parseHyprctlCursorPos(const QString& output, QPoint& pos)
+{
+    const QRegExp cursorRegex("^\\s*(-?\\d+)\\s*,\\s*(-?\\d+)\\s*$");
+    if (!cursorRegex.exactMatch(output)) {
+        return false;
+    }
+
+    pos = QPoint(cursorRegex.cap(1).toInt(), cursorRegex.cap(2).toInt());
+    return true;
+}
+
+bool findCursorPositionInJson(const QJsonValue& value, QPoint& pos)
+{
+    if (value.isObject()) {
+        const QJsonObject object = value.toObject();
+        const QStringList keys = QStringList()
+            << "cursor_position"
+            << "cursorPosition"
+            << "cursor";
+
+        for (QStringList::const_iterator it = keys.begin(); it != keys.end(); ++it) {
+            const QJsonValue cursorValue = object.value(*it);
+            if (cursorValue.isArray()) {
+                const QJsonArray array = cursorValue.toArray();
+                if (array.size() >= 2 && array.at(0).isDouble() && array.at(1).isDouble()) {
+                    pos = QPoint(array.at(0).toInt(), array.at(1).toInt());
+                    return true;
+                }
+            }
+            else if (cursorValue.isObject()) {
+                const QJsonObject cursorObject = cursorValue.toObject();
+                if (cursorObject.value("x").isDouble() && cursorObject.value("y").isDouble()) {
+                    pos = QPoint(cursorObject.value("x").toInt(), cursorObject.value("y").toInt());
+                    return true;
+                }
+            }
+        }
+
+        for (QJsonObject::const_iterator it = object.begin(); it != object.end(); ++it) {
+            if (findCursorPositionInJson(it.value(), pos)) {
+                return true;
+            }
+        }
+    }
+    else if (value.isArray()) {
+        const QJsonArray array = value.toArray();
+        for (QJsonArray::const_iterator it = array.begin(); it != array.end(); ++it) {
+            if (findCursorPositionInJson(*it, pos)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool queryCompositorCursorPosition(QPoint& pos, QString& source)
+{
+    QString output;
+    if (runDebugCommand("gdbus",
+            QStringList() << "call"
+                          << "--session"
+                          << "--dest" << "org.gnome.Shell"
+                          << "--object-path" << "/org/gnome/Shell"
+                          << "--method" << "org.gnome.Shell.Eval"
+                          << "JSON.stringify(global.get_pointer())",
+            output)) {
+        QRegExp gnomePointerRegex("\\[\\s*(-?\\d+)\\s*,\\s*(-?\\d+)\\s*,");
+        if (gnomePointerRegex.indexIn(output) >= 0) {
+            pos = QPoint(gnomePointerRegex.cap(1).toInt(), gnomePointerRegex.cap(2).toInt());
+            source = "gnome-shell eval";
+            return true;
+        }
+    }
+
+    if (runDebugCommand("hyprctl", QStringList() << "cursorpos", output) &&
+        parseHyprctlCursorPos(output, pos)) {
+        source = "hyprctl cursorpos";
+        return true;
+    }
+
+    if (runDebugCommand("swaymsg", QStringList() << "-t" << "get_seats", output)) {
+        QJsonParseError parseError;
+        const QJsonDocument document = QJsonDocument::fromJson(output.toUtf8(), &parseError);
+        if (parseError.error == QJsonParseError::NoError &&
+            findCursorPositionInJson(document.isArray() ? QJsonValue(document.array()) : QJsonValue(document.object()), pos)) {
+            source = "swaymsg -t get_seats";
+            return true;
+        }
+    }
+
+    source = "unavailable";
+    return false;
+}
+
+bool queryX11CursorPosition(QPoint& pos, QString& source)
+{
+    Q_UNUSED(pos);
+    source = "X11 only available through cursor server";
+    return false;
+}
+
+QString cursorPositionSocketPath()
+{
+#if defined(Q_OS_LINUX)
+    return QDir::temp().absoluteFilePath(QString("etherwaver-cursor-%1.sock").arg(getuid()));
+#else
+    return QDir::temp().absoluteFilePath("etherwaver-cursor.sock");
+#endif
+}
+
+QString uhidBackendStatusPath()
+{
+#if defined(Q_OS_LINUX)
+    return QDir::temp().absoluteFilePath(QString("etherwaver-uhid-cursor-%1.status").arg(getuid()));
+#else
+    return QDir::temp().absoluteFilePath("etherwaver-uhid-cursor.status");
+#endif
+}
+
+QStringList uhidBackendStatusPaths()
+{
+    QStringList paths;
+    paths << uhidBackendStatusPath();
+
+#if defined(Q_OS_LINUX)
+    const QStringList matches = QDir::temp().entryList(
+        QStringList() << "etherwaver-uhid-cursor-*.status",
+        QDir::Files,
+        QDir::Time);
+    for (QStringList::const_iterator it = matches.begin(); it != matches.end(); ++it) {
+        const QString path = QDir::temp().absoluteFilePath(*it);
+        if (!paths.contains(path)) {
+            paths << path;
+        }
+    }
+#endif
+
+    return paths;
+}
+
+bool queryUhidBackendStatus(QString& status)
+{
+    const QStringList paths = uhidBackendStatusPaths();
+    for (QStringList::const_iterator it = paths.begin(); it != paths.end(); ++it) {
+        QFile file(*it);
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            continue;
+        }
+
+        status = QString("%1: %2")
+            .arg(*it)
+            .arg(QString::fromLocal8Bit(file.readAll()).trimmed());
+        return true;
+    }
+
+    status = "unavailable";
+    return false;
+}
+
+bool queryCursorPositionServer(const QString& socketPath, QPoint& pos, QString& source)
+{
+    QLocalSocket socket;
+    socket.connectToServer(socketPath);
+    if (!socket.waitForConnected(80)) {
+        source = "cursor server unavailable";
+        return false;
+    }
+
+    if (!socket.waitForReadyRead(120)) {
+        source = "cursor server timeout";
+        return false;
+    }
+
+    const QString response = QString::fromLocal8Bit(socket.readAll()).trimmed();
+    const QStringList parts = response.split(' ', Qt::SkipEmptyParts);
+    if (parts.size() < 4 || parts[0] != "OK") {
+        source = response.isEmpty() ? "cursor server empty response" : response;
+        return false;
+    }
+
+    bool xOk = false;
+    bool yOk = false;
+    const int x = parts[1].toInt(&xOk);
+    const int y = parts[2].toInt(&yOk);
+    if (!xOk || !yOk) {
+        source = "cursor server invalid response";
+        return false;
+    }
+
+    pos = QPoint(x, y);
+    source = parts.mid(3).join(" ");
+    return true;
+}
+
+bool waitForCursorPositionServer(const QString& socketPath, int timeoutMs)
+{
+    QElapsedTimer timer;
+    timer.start();
+
+    while (timer.elapsed() < timeoutMs) {
+        if (QFile::exists(socketPath)) {
+            return true;
+        }
+        QThread::msleep(25);
+    }
+
+    return false;
+}
+
+bool queryGlobalCursorPosition(QPoint& pos, QString& source)
+{
+    if (queryCompositorCursorPosition(pos, source)) {
+        return true;
+    }
+
+    if (queryX11CursorPosition(pos, source)) {
+        return true;
+    }
+
+    pos = QCursor::pos();
+    source = "Qt cursor position";
+    return true;
+}
+
+}
+
 MainWindow::MainWindow(QSettings& settings, AppConfig& appConfig) :
     m_Settings(settings),
     m_AppConfig(&appConfig),
@@ -108,7 +471,9 @@ MainWindow::MainWindow(QSettings& settings, AppConfig& appConfig) :
     m_AlreadyHidden(false),
     m_pMenuBar(NULL),
     m_pMenuBarrier(NULL),
+    m_pMenuDebug(NULL),
     m_pMenuHelp(NULL),
+    m_pActionDebugScreenInfo(NULL),
     m_pZeroconfService(NULL),
     m_pDataDownloader(NULL),
     m_DownloadMessageBox(NULL),
@@ -137,11 +502,13 @@ MainWindow::MainWindow(QSettings& settings, AppConfig& appConfig) :
     m_pLabelIpAddresses->setText(getIPAddresses());
 
 #if defined(Q_OS_WIN)
-    // ipc must always be enabled, so that we can disable command when switching to desktop mode.
     connect(&m_IpcClient, SIGNAL(readLogLine(const QString&)), this, SLOT(appendLogRaw(const QString&)));
     connect(&m_IpcClient, SIGNAL(errorMessage(const QString&)), this, SLOT(appendLogError(const QString&)));
     connect(&m_IpcClient, SIGNAL(infoMessage(const QString&)), this, SLOT(appendLogInfo(const QString&)));
-    m_IpcClient.connectToHost();
+    // only connect to IPC daemon when running in Service mode
+    if (appConfig.processMode() == Service) {
+        m_IpcClient.connectToHost();
+    }
 #endif
 
     // change default size based on os
@@ -259,6 +626,8 @@ void MainWindow::createTrayIcon()
 void MainWindow::retranslateMenuBar()
 {
     m_pMenuBarrier->setTitle(tr("&EtherWaver"));
+    m_pMenuDebug->setTitle(tr("&Debug"));
+    m_pActionDebugScreenInfo->setText(tr("Screen info"));
     m_pMenuHelp->setTitle(tr("&Help"));
 }
 
@@ -266,10 +635,13 @@ void MainWindow::createMenuBar()
 {
     m_pMenuBar = new QMenuBar(this);
     m_pMenuBarrier = new QMenu("", m_pMenuBar);
+    m_pMenuDebug = new QMenu("", m_pMenuBar);
     m_pMenuHelp = new QMenu("", m_pMenuBar);
+    m_pActionDebugScreenInfo = new QAction(this);
     retranslateMenuBar();
 
     m_pMenuBar->addAction(m_pMenuBarrier->menuAction());
+    m_pMenuBar->addAction(m_pMenuDebug->menuAction());
     m_pMenuBar->addAction(m_pMenuHelp->menuAction());
 
     m_pMenuBarrier->addAction(m_pActionShowLog);
@@ -279,6 +651,7 @@ void MainWindow::createMenuBar()
     m_pMenuBarrier->addAction(m_pActionSave);
     m_pMenuBarrier->addSeparator();
     m_pMenuBarrier->addAction(m_pActionQuit);
+    m_pMenuDebug->addAction(m_pActionDebugScreenInfo);
     m_pMenuHelp->addAction(m_pActionAbout);
 
     setMenuBar(m_pMenuBar);
@@ -286,15 +659,33 @@ void MainWindow::createMenuBar()
 
 void MainWindow::loadSettings()
 {
+    QSettings persistentSettings(persistentGuiStatePath(), QSettings::IniFormat);
+
     // the next two must come BEFORE loading groupServerChecked and groupClientChecked or
     // disabling and/or enabling the right widgets won't automatically work
-    m_pRadioExternalConfig->setChecked(settings().value("useExternalConfig", false).toBool());
-    m_pRadioInternalConfig->setChecked(settings().value("useInternalConfig", true).toBool());
+    m_pRadioExternalConfig->setChecked(
+        persistentSettings.value(
+            "useExternalConfig",
+            settings().value("useExternalConfig", false)).toBool());
+    m_pRadioInternalConfig->setChecked(
+        persistentSettings.value(
+            "useInternalConfig",
+            settings().value("useInternalConfig", true)).toBool());
 
-    m_pGroupServer->setChecked(settings().value("groupServerChecked", false).toBool());
-    m_pLineEditConfigFile->setText(settings().value("configFile", QDir::homePath() + "/" + barrierConfigName).toString());
-    m_pGroupClient->setChecked(settings().value("groupClientChecked", true).toBool());
-    m_pLineEditHostname->setText(settings().value("serverHostname").toString());
+    m_pGroupServer->setChecked(
+        persistentSettings.value(
+            "groupServerChecked",
+            settings().value("groupServerChecked", false)).toBool());
+    m_pLineEditConfigFile->setText(
+        persistentSettings.value(
+            "configFile",
+            settings().value("configFile", QDir::homePath() + "/" + barrierConfigName)).toString());
+    m_pGroupClient->setChecked(
+        persistentSettings.value(
+            "groupClientChecked",
+            settings().value("groupClientChecked", true)).toBool());
+    m_pLineEditHostname->setText(
+        persistentSettings.value("serverHostname", appConfig().serverHostname()).toString().trimmed());
 }
 
 void MainWindow::initConnections()
@@ -304,20 +695,32 @@ void MainWindow::initConnections()
     connect(m_pActionStartBarrier, SIGNAL(triggered()), this, SLOT(startBarrier()));
     connect(m_pActionStopBarrier, SIGNAL(triggered()), this, SLOT(stopBarrier()));
     connect(m_pActionShowLog, SIGNAL(triggered()), this, SLOT(showLogWindow()));
+    connect(m_pActionDebugScreenInfo, SIGNAL(triggered()), this, SLOT(showDebugScreenInfo()));
     connect(m_pActionQuit, SIGNAL(triggered()), qApp, SLOT(quit()));
 }
 
 void MainWindow::saveSettings()
 {
+    QSettings persistentSettings(persistentGuiStatePath(), QSettings::IniFormat);
+
     // program settings
     settings().setValue("groupServerChecked", m_pGroupServer->isChecked());
     settings().setValue("useExternalConfig", m_pRadioExternalConfig->isChecked());
     settings().setValue("configFile", m_pLineEditConfigFile->text());
     settings().setValue("useInternalConfig", m_pRadioInternalConfig->isChecked());
     settings().setValue("groupClientChecked", m_pGroupClient->isChecked());
-    settings().setValue("serverHostname", m_pLineEditHostname->text());
+    appConfig().setServerHostname(m_pLineEditHostname->text());
+    settings().setValue("serverHostname", appConfig().serverHostname());
 
     settings().sync();
+
+    persistentSettings.setValue("groupServerChecked", m_pGroupServer->isChecked());
+    persistentSettings.setValue("useExternalConfig", m_pRadioExternalConfig->isChecked());
+    persistentSettings.setValue("configFile", m_pLineEditConfigFile->text());
+    persistentSettings.setValue("useInternalConfig", m_pRadioInternalConfig->isChecked());
+    persistentSettings.setValue("groupClientChecked", m_pGroupClient->isChecked());
+    persistentSettings.setValue("serverHostname", appConfig().serverHostname());
+    persistentSettings.sync();
 }
 
 void MainWindow::setIcon(qBarrierState state)
@@ -500,6 +903,9 @@ void MainWindow::proofreadInfo()
 
 void MainWindow::startBarrier()
 {
+    saveSettings();
+    appConfig().saveSettings();
+
     bool desktopMode = appConfig().processMode() == Desktop;
     bool serviceMode = appConfig().processMode() == Service;
 
@@ -557,7 +963,7 @@ void MainWindow::startBarrier()
     // launched the process (e.g. when launched with elevation). setting the
     // profile dir on launch ensures it uses the same profile dir is used
     // no matter how its relaunched.
-    args << "--profile-dir" << QString::fromStdString("\"" + barrier::DataDirectories::profile().u8string() + "\"");
+    args << "--profile-dir" << QString::fromStdString(barrier::DataDirectories::profile().u8string());
 #endif
 
     if ((barrier_type() == BarrierType::Client && !clientArgs(args, app))
@@ -581,6 +987,7 @@ void MainWindow::startBarrier()
     qDebug() << args;
 
     appendLogDebug(QString("command: %1 %2").arg(app, args.join(" ")));
+    appendLogInfo("executable: " + app);
 
     appendLogInfo("config file: " + configFilename());
     appendLogInfo("log level: " + appConfig().logLevelText());
@@ -609,6 +1016,7 @@ void MainWindow::startBarrier()
 bool MainWindow::clientArgs(QStringList& args, QString& app)
 {
     app = appPath(appConfig().barriercName());
+    const QString hostname = m_pLineEditHostname->text().trimmed();
 
     if (!QFile::exists(app))
     {
@@ -617,11 +1025,6 @@ bool MainWindow::clientArgs(QStringList& args, QString& app)
                              tr("The executable for the waver client does not exist."));
         return false;
     }
-
-#if defined(Q_OS_WIN)
-    // wrap in quotes so a malicious user can't start \Program.exe as admin.
-    app = QString("\"%1\"").arg(app);
-#endif
 
     if (appConfig().logToFile())
     {
@@ -647,7 +1050,7 @@ bool MainWindow::clientArgs(QStringList& args, QString& app)
             args << "[" + serverIp + "]:" + QString::number(appConfig().port());
             return true;
         }
-    } else if (m_pLineEditHostname->text().isEmpty()) {
+    } else if (hostname.isEmpty()) {
         show();
         if (!m_SuppressEmptyServerWarning) {
             QMessageBox::warning(this, tr("Hostname is empty"),
@@ -656,7 +1059,7 @@ bool MainWindow::clientArgs(QStringList& args, QString& app)
         return false;
     }
 
-    args << "[" + m_pLineEditHostname->text() + "]:" + QString::number(appConfig().port());
+    args << "[" + hostname + "]:" + QString::number(appConfig().port());
 
     return true;
 }
@@ -712,7 +1115,7 @@ QString MainWindow::address()
 
 QString MainWindow::appPath(const QString& name)
 {
-    return appConfig().barrierProgramDir() + name;
+    return resolveExecutablePath(appConfig().barrierProgramDir(), name);
 }
 
 bool MainWindow::serverArgs(QStringList& args, QString& app)
@@ -726,11 +1129,6 @@ bool MainWindow::serverArgs(QStringList& args, QString& app)
         return false;
     }
 
-#if defined(Q_OS_WIN)
-    // wrap in quotes so a malicious user can't start \Program.exe as admin.
-    app = QString("\"%1\"").arg(app);
-#endif
-
     if (appConfig().logToFile())
     {
         appConfig().persistLogDir();
@@ -743,10 +1141,6 @@ bool MainWindow::serverArgs(QStringList& args, QString& app)
     }
 
     QString configFilename = this->configFilename();
-#if defined(Q_OS_WIN)
-    // wrap in quotes in case username contains spaces.
-    configFilename = QString("\"%1\"").arg(configFilename);
-#endif
     args << "-c" << configFilename << "--address" << address();
 
     return true;
@@ -1119,6 +1513,223 @@ void MainWindow::on_m_pActionSettings_triggered()
 {
     if (SettingsDialog(this, appConfig()).exec() == QDialog::Accepted)
         updateSSLFingerprint();
+}
+
+void MainWindow::showDebugScreenInfo()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Debug - screen info"));
+    dialog.setWindowFlags(dialog.windowFlags() | Qt::WindowStaysOnTopHint);
+    dialog.setAttribute(Qt::WA_TranslucentBackground, false);
+    dialog.setAutoFillBackground(true);
+    QPalette dialogPalette = dialog.palette();
+    dialogPalette.setColor(QPalette::Window, dialogPalette.color(QPalette::Base));
+    dialog.setPalette(dialogPalette);
+    dialog.resize(620, 360);
+
+    QVBoxLayout* layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(8, 8, 8, 8);
+    QPlainTextEdit* textEdit = new QPlainTextEdit(&dialog);
+    textEdit->setReadOnly(true);
+    textEdit->setLineWrapMode(QPlainTextEdit::NoWrap);
+    textEdit->setUndoRedoEnabled(false);
+    textEdit->setFrameShape(QFrame::StyledPanel);
+    textEdit->viewport()->setAutoFillBackground(true);
+    textEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
+    layout->addWidget(textEdit);
+
+    const QString cursorSocketPath = cursorPositionSocketPath();
+    QFile::remove(cursorSocketPath);
+    QProcess cursorServer(&dialog);
+    QString cursorServerProgram = appPath("waverd");
+    QString cursorServerStatus;
+    QString cursorServerEnvironment;
+    if (!QFile::exists(cursorServerProgram)) {
+        cursorServerProgram = appPath("barrierd");
+    }
+    if (QFile::exists(cursorServerProgram)) {
+        QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+        environment.insert("QT_QPA_PLATFORM", "xcb");
+        environment.insert("GDK_BACKEND", "x11");
+        environment.insert("SDL_VIDEODRIVER", "x11");
+        const QString gnomeSetupDisplay = environment.value("GNOME_SETUP_DISPLAY").trimmed();
+        if (!gnomeSetupDisplay.isEmpty()) {
+            environment.insert("DISPLAY", gnomeSetupDisplay);
+        }
+        const QString cursorOrigin = environment.value("ETHERWAVER_CURSOR_ORIGIN").trimmed();
+        cursorServerEnvironment = tr("DISPLAY=%1 WAYLAND_DISPLAY=%2 HYPRLAND_INSTANCE_SIGNATURE=%3 ETHERWAVER_CURSOR_ORIGIN=%4")
+            .arg(environment.value("DISPLAY", "<unset>"))
+            .arg(environment.value("WAYLAND_DISPLAY", "<unset>"))
+            .arg(environment.value("HYPRLAND_INSTANCE_SIGNATURE", "<unset>"))
+            .arg(cursorOrigin.isEmpty() ? "<unset>" : cursorOrigin);
+        cursorServer.setProcessEnvironment(environment);
+        QStringList cursorServerArgs;
+        cursorServerArgs << "--cursor-position-server"
+                         << "--cursor-position-socket" << cursorSocketPath
+                         << "--log-level" << "WARNING";
+        if (!cursorOrigin.isEmpty()) {
+            cursorServerArgs << "--cursor-position-origin" << cursorOrigin;
+        }
+        cursorServer.start(cursorServerProgram, cursorServerArgs);
+        if (cursorServer.waitForStarted(500) &&
+            waitForCursorPositionServer(cursorSocketPath, 1000)) {
+            cursorServerStatus = tr("running: %1").arg(cursorServerProgram);
+        }
+        else {
+            cursorServerStatus = tr("failed to start: %1").arg(cursorServerProgram);
+        }
+    }
+    else {
+        cursorServerStatus = tr("executable not found");
+        cursorServerEnvironment = tr("not started");
+    }
+
+    QTimer* refreshTimer = new QTimer(&dialog);
+    refreshTimer->setInterval(1000);
+
+    auto refreshScreenInfo = [this, textEdit, cursorSocketPath, cursorServerStatus, cursorServerEnvironment]() {
+        const QList<QScreen*> screens = QGuiApplication::screens();
+        QString uhidBackendStatus;
+        queryUhidBackendStatus(uhidBackendStatus);
+        QPoint serverCursorPos;
+        QString serverCursorSource;
+        const bool hasServerCursor =
+            queryCursorPositionServer(cursorSocketPath, serverCursorPos, serverCursorSource);
+        QPoint compositorCursorPos;
+        QString compositorCursorSource;
+        const bool hasCompositorCursor =
+            queryCompositorCursorPosition(compositorCursorPos, compositorCursorSource);
+        QPoint x11CursorPos;
+        QString x11CursorSource;
+        const bool hasX11Cursor = queryX11CursorPosition(x11CursorPos, x11CursorSource);
+        const QPoint qtCursorPos = QCursor::pos();
+        const QPoint cursorPos = hasServerCursor ? serverCursorPos :
+            (hasCompositorCursor ? compositorCursorPos : (hasX11Cursor ? x11CursorPos : qtCursorPos));
+        const QString cursorSource = hasServerCursor ? serverCursorSource :
+            (hasCompositorCursor ? compositorCursorSource :
+                (hasX11Cursor ? x11CursorSource : "Qt cursor position"));
+        QScreen* windowQScreen = windowHandle() != NULL ? windowHandle()->screen() : NULL;
+
+        const int cursorScreen = screenIndexAt(screens, cursorPos);
+        const int serverCursorScreen = hasServerCursor ? screenIndexAt(screens, serverCursorPos) : -1;
+        const int compositorCursorScreen = hasCompositorCursor ? screenIndexAt(screens, compositorCursorPos) : -1;
+        const int x11CursorScreen = hasX11Cursor ? screenIndexAt(screens, x11CursorPos) : -1;
+        const int qtCursorScreen = screenIndexAt(screens, qtCursorPos);
+        const int windowScreen = screenIndexOf(screens, windowQScreen);
+
+        QStringList lines;
+        lines << tr("Cursor server status: %1").arg(cursorServerStatus);
+        lines << tr("Cursor server environment: %1").arg(cursorServerEnvironment);
+        lines << tr("Cursor server socket: %1").arg(cursorSocketPath);
+        lines << tr("Hyprland instance: %1").arg(
+            QProcessEnvironment::systemEnvironment().value("HYPRLAND_INSTANCE_SIGNATURE", "<unset>"));
+        lines << tr("UHID backend status file: %1").arg(uhidBackendStatusPath());
+        lines << tr("UHID backend status: %1").arg(uhidBackendStatus);
+        lines << "";
+        lines << tr("Cursor position: x=%1 y=%2").arg(cursorPos.x()).arg(cursorPos.y());
+        lines << tr("Cursor source: %1").arg(cursorSource);
+        lines << tr("Cursor screen: %1").arg(cursorScreen);
+        if (cursorScreen >= 0) {
+            lines << tr("Cursor screen geometry: %1").arg(rectToString(screens[cursorScreen]->geometry()));
+        }
+        lines << "";
+        if (hasServerCursor) {
+            lines << tr("Cursor server: x=%1 y=%2 screen=%3 source=%4")
+                .arg(serverCursorPos.x())
+                .arg(serverCursorPos.y())
+                .arg(serverCursorScreen)
+                .arg(serverCursorSource);
+            lines << tr("Cursor server backend: %1")
+                .arg(serverCursorSource.section(' ', 0, 0));
+            if (serverCursorSource.contains("devices=")) {
+                lines << tr("Cursor server diagnostics: %1")
+                    .arg(serverCursorSource.section(' ', 1));
+            }
+        }
+        else {
+            lines << tr("Cursor server: unavailable");
+            lines << tr("Cursor server backend: unavailable");
+        }
+        if (hasCompositorCursor) {
+            lines << tr("Compositor cursor: x=%1 y=%2 screen=%3 source=%4")
+                .arg(compositorCursorPos.x())
+                .arg(compositorCursorPos.y())
+                .arg(compositorCursorScreen)
+                .arg(compositorCursorSource);
+        }
+        else {
+            lines << tr("Compositor cursor: unavailable");
+        }
+        if (hasX11Cursor) {
+            lines << tr("X11 cursor: x=%1 y=%2 screen=%3 source=%4")
+                .arg(x11CursorPos.x())
+                .arg(x11CursorPos.y())
+                .arg(x11CursorScreen)
+                .arg(x11CursorSource);
+        }
+        else {
+            lines << tr("X11 cursor: unavailable");
+        }
+        lines << tr("Qt cursor: x=%1 y=%2 screen=%3")
+            .arg(qtCursorPos.x())
+            .arg(qtCursorPos.y())
+            .arg(qtCursorScreen);
+        lines << "";
+        lines << tr("Window screen: %1").arg(windowScreen);
+        if (windowScreen >= 0) {
+            lines << tr("Window screen geometry: %1").arg(rectToString(screens[windowScreen]->geometry()));
+        }
+        lines << "";
+        lines << tr("Detected screens:");
+
+        const int screenCount = screens.size();
+        for (int i = 0; i < screenCount; ++i) {
+            QString markers;
+            if (i == cursorScreen) {
+                markers += tr(" cursor");
+            }
+            if (i == windowScreen) {
+                markers += tr(" window");
+            }
+
+            lines << tr("Screen %1: geometry %2 available %3%4")
+                .arg(i)
+                .arg(rectToString(screens[i]->geometry()))
+                .arg(rectToString(screens[i]->availableGeometry()))
+                .arg(markers.isEmpty() ? "" : " [" + markers.trimmed() + "]");
+        }
+
+        if (screenCount == 0) {
+            lines << tr("No screens detected by Qt.");
+        }
+
+        const QString nextText = lines.join("\n");
+        if (textEdit->toPlainText() != nextText) {
+            const int verticalValue = textEdit->verticalScrollBar()->value();
+            const int horizontalValue = textEdit->horizontalScrollBar()->value();
+            textEdit->setPlainText(nextText);
+            textEdit->verticalScrollBar()->setValue(verticalValue);
+            textEdit->horizontalScrollBar()->setValue(horizontalValue);
+        }
+    };
+
+    connect(refreshTimer, &QTimer::timeout, refreshScreenInfo);
+    refreshScreenInfo();
+    refreshTimer->start();
+    dialog.raise();
+    dialog.activateWindow();
+
+    dialog.exec();
+
+    if (cursorServer.state() != QProcess::NotRunning) {
+        cursorServer.terminate();
+        if (!cursorServer.waitForFinished(500)) {
+            cursorServer.kill();
+            cursorServer.waitForFinished(500);
+        }
+    }
+    QFile::remove(cursorSocketPath);
 }
 
 void MainWindow::autoAddScreen(const QString name)

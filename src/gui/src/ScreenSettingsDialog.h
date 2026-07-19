@@ -44,6 +44,7 @@ class ScreenSettingsDialog : public QDialog, public Ui::ScreenSettingsDialogBase
         void on_m_pButtonRemoveAlias_clicked();
         void on_m_pLineEditAlias_textChanged(const QString& text);
         void on_m_pLineEditName_textChanged(const QString& text);
+        void on_m_pCheckBoxBluetooth_toggled(bool checked);
         void on_m_pListAliases_itemSelectionChanged();
 
     private:

@@ -25,6 +25,10 @@ add_library(server STATIC ${sources})
 
 target_link_libraries(server core platform)
 
+if (WIN32)
+    target_link_libraries(server ws2_32)
+endif()
+
 if (UNIX)
     target_link_libraries(server synlib)
 endif()

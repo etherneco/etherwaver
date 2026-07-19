@@ -98,6 +98,7 @@ ServerConfigDialog::ServerConfigDialog(QWidget* parent, ServerConfig& config, co
     m_pLabelNewScreenWidget->hide();
 
     QPushButton* addButton = new QPushButton(tr("Add Screen"), this);
+    QPushButton* addBluetoothButton = new QPushButton(tr("Add Bluetooth"), this);
     QPushButton* editButton = new QPushButton(tr("Edit Selected"), this);
     QPushButton* removeButton = new QPushButton(tr("Delete Selected"), this);
     QPushButton* autoButton = new QPushButton(tr("Auto Layout"), this);
@@ -110,6 +111,7 @@ ServerConfigDialog::ServerConfigDialog(QWidget* parent, ServerConfig& config, co
 
     QHBoxLayout* toolbar = new QHBoxLayout();
     toolbar->addWidget(addButton);
+    toolbar->addWidget(addBluetoothButton);
     toolbar->addWidget(editButton);
     toolbar->addWidget(removeButton);
     toolbar->addWidget(autoButton);
@@ -128,6 +130,7 @@ ServerConfigDialog::ServerConfigDialog(QWidget* parent, ServerConfig& config, co
     }
 
     connect(addButton, SIGNAL(clicked()), this, SLOT(onAddScreen()));
+    connect(addBluetoothButton, SIGNAL(clicked()), m_layoutEditor, SLOT(addBluetoothDevice()));
     connect(editButton, SIGNAL(clicked()), this, SLOT(onEditScreen()));
     connect(removeButton, SIGNAL(clicked()), this, SLOT(onRemoveScreen()));
     connect(autoButton, SIGNAL(clicked()), this, SLOT(onAutoLayout()));

@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>434</width>
-    <height>437</height>
+    <height>501</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -53,6 +53,55 @@
       </widget>
      </item>
     </layout>
+   </item>
+   <item>
+    <widget class="QCheckBox" name="m_pCheckBoxBluetooth">
+     <property name="text">
+      <string>Bluetooth HID device</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="m_pGroupBluetoothBridge">
+     <property name="title">
+      <string>Bluetooth bridge</string>
+     </property>
+     <layout class="QFormLayout" name="formLayoutBluetoothBridge">
+      <item row="0" column="0">
+       <widget class="QLabel" name="m_pLabelBluetoothBridgeAddress">
+        <property name="text">
+         <string>Bridge address:</string>
+        </property>
+        <property name="buddy">
+         <cstring>m_pLineEditBluetoothBridgeAddress</cstring>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="m_pLineEditBluetoothBridgeAddress"/>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="m_pLabelBluetoothBridgePort">
+        <property name="text">
+         <string>Bridge port:</string>
+        </property>
+        <property name="buddy">
+         <cstring>m_pSpinBoxBluetoothBridgePort</cstring>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QSpinBox" name="m_pSpinBoxBluetoothBridgePort">
+        <property name="maximum">
+         <number>65535</number>
+        </property>
+        <property name="value">
+         <number>24810</number>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
    </item>
    <item>
     <layout class="QHBoxLayout">

@@ -40,6 +40,7 @@
 #include <thread>
 
 class BaseClientProxy;
+class BluetoothClientProxy;
 class EventQueueTimer;
 class PrimaryClient;
 class InputFilter;
@@ -369,6 +370,7 @@ private:
     void                processOptions();
 
     void                reloadScreenLayout();
+    void                syncBluetoothClients();
     std::string         getLayoutPath() const;
     bool                usingObjectLayout() const;
     const etherwaver::layout::Screen*
@@ -493,6 +495,7 @@ private:
     typedef std::set<BaseClientProxy*> ClientSet;
     ClientList            m_clients;
     ClientSet            m_clientSet;
+    std::map<std::string, std::unique_ptr<BluetoothClientProxy> > m_bluetoothClients;
 
     // all old connections that we're waiting to hangup
     typedef std::map<BaseClientProxy*, EventQueueTimer*> OldClients;

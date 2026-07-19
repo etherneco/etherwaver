@@ -110,6 +110,15 @@ class AppConfig: public QObject
         void setUhidName(const QString& name);
         const QString& getUhidName() const;
 
+        void setBluetoothBridgeEnabled(bool enabled);
+        bool getBluetoothBridgeEnabled() const;
+
+        void setBluetoothBridgeAddress(const QString& address);
+        const QString& getBluetoothBridgeAddress() const;
+
+        void setBluetoothBridgePort(int port);
+        int getBluetoothBridgePort() const;
+
         void saveSettings();
 
 protected:
@@ -150,6 +159,9 @@ protected:
         bool m_MinimizeToTray;
         bool m_UhidEnabled;
         QString m_UhidName;
+        bool m_BluetoothBridgeEnabled;
+        QString m_BluetoothBridgeAddress;
+        int m_BluetoothBridgePort;
 
         static const char m_BarriersName[];
         static const char m_BarriercName[];

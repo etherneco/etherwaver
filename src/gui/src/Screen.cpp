@@ -23,6 +23,9 @@
 
 Screen::Screen() :
     m_Pixmap(QPixmap(":res/icons/64x64/video-display.png")),
+    m_Bluetooth(false),
+    m_BluetoothBridgeAddress("127.0.0.1"),
+    m_BluetoothBridgePort(24810),
     m_Swapped(false)
 {
     init();
@@ -30,6 +33,9 @@ Screen::Screen() :
 
 Screen::Screen(const QString& name) :
     m_Pixmap(QPixmap(":res/icons/64x64/video-display.png")),
+    m_Bluetooth(false),
+    m_BluetoothBridgeAddress("127.0.0.1"),
+    m_BluetoothBridgePort(24810),
     m_Swapped(false)
 {
     init();
@@ -42,6 +48,9 @@ void Screen::init()
     aliases().clear();
     setPosition(QPoint(0, 0));
     setSize(QSize(240, 140));
+    setBluetooth(false);
+    setBluetoothBridgeAddress("127.0.0.1");
+    setBluetoothBridgePort(24810);
     clearLinks();
     modifiers().clear();
     switchCorners().clear();
@@ -76,6 +85,9 @@ void Screen::loadSettings(QSettings& settings)
     setLink(LinkLeft, settings.value("linkLeft").toString());
     setLink(LinkUp, settings.value("linkUp").toString());
     setLink(LinkDown, settings.value("linkDown").toString());
+    setBluetooth(settings.value("bluetooth", false).toBool());
+    setBluetoothBridgeAddress(settings.value("bluetoothBridgeAddress", "127.0.0.1").toString());
+    setBluetoothBridgePort(settings.value("bluetoothBridgePort", 24810).toInt());
 
     readSettings<QString>(settings, aliases(), "alias", QString(""));
     readSettings<int>(settings, modifiers(), "modifier", Modifier::DefaultMod,
@@ -101,6 +113,9 @@ void Screen::saveSettings(QSettings& settings) const
     settings.setValue("linkLeft", link(LinkLeft));
     settings.setValue("linkUp", link(LinkUp));
     settings.setValue("linkDown", link(LinkDown));
+    settings.setValue("bluetooth", isBluetooth());
+    settings.setValue("bluetoothBridgeAddress", bluetoothBridgeAddress());
+    settings.setValue("bluetoothBridgePort", bluetoothBridgePort());
 
     writeSettings<QString>(settings, aliases(), "alias");
     writeSettings<int>(settings, modifiers(), "modifier");
@@ -163,6 +178,9 @@ QDataStream& operator<<(QDataStream& outStream, const Screen& screen)
         << screen.name()
         << screen.position()
         << screen.size()
+        << screen.isBluetooth()
+        << screen.bluetoothBridgeAddress()
+        << screen.bluetoothBridgePort()
         << screen.links()
         << screen.switchCornerSize()
         << screen.aliases()
@@ -179,6 +197,9 @@ QDataStream& operator>>(QDataStream& inStream, Screen& screen)
         >> screen.m_Name
         >> screen.m_Position
         >> screen.m_Size
+        >> screen.m_Bluetooth
+        >> screen.m_BluetoothBridgeAddress
+        >> screen.m_BluetoothBridgePort
         >> screen.m_Links
         >> screen.m_SwitchCornerSize
         >> screen.m_Aliases

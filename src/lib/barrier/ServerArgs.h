@@ -30,5 +30,6 @@ public:
     String                m_configFile;
     Config*                m_config;
     String                m_screenChangeScript;
+    String                m_bluetoothBridgeAddress;
     bool check_client_certificates = true;
 };

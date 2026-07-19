@@ -1,0 +1,40 @@
+{
+  "screens": [
+    {
+      "id": "BluetoothPi:BluetoothPi-1",
+      "host": "BluetoothPi",
+      "name": "BluetoothPi-1",
+      "kind": "bluetooth",
+      "bridgeAddress": "10.1.30.33",
+      "bridgePort": 24810,
+      "x": 41,
+      "y": 43,
+      "width": 240,
+      "height": 140,
+      "links": {
+        "right": "",
+        "left": "",
+        "up": "",
+        "down": ""
+      }
+    },
+    {
+      "id": "Siloe:Siloe-1",
+      "host": "Siloe",
+      "name": "Siloe-1",
+      "kind": "screen",
+      "bridgeAddress": "",
+      "bridgePort": 0,
+      "x": 293,
+      "y": 43,
+      "width": 240,
+      "height": 140,
+      "links": {
+        "right": "",
+        "left": "",
+        "up": "",
+        "down": ""
+      }
+    }
+  ]
+}

@@ -60,6 +60,9 @@ class Screen : public BaseConfig
         const QStringList& aliases() const { return m_Aliases; }
         const QPoint& position() const { return m_Position; }
         const QSize& size() const { return m_Size; }
+        bool isBluetooth() const { return m_Bluetooth; }
+        const QString& bluetoothBridgeAddress() const { return m_BluetoothBridgeAddress; }
+        int bluetoothBridgePort() const { return m_BluetoothBridgePort; }
         QString link(LinkDirection direction) const { return m_Links[static_cast<int>(direction)]; }
         const QStringList& links() const { return m_Links; }
 
@@ -87,6 +90,9 @@ class Screen : public BaseConfig
         void setName(const QString& name) { m_Name = name; }
         void setPosition(const QPoint& position) { m_Position = position; }
         void setSize(const QSize& size) { m_Size = size; }
+        void setBluetooth(bool on) { m_Bluetooth = on; }
+        void setBluetoothBridgeAddress(const QString& address) { m_BluetoothBridgeAddress = address.trimmed(); }
+        void setBluetoothBridgePort(int port) { m_BluetoothBridgePort = port; }
         void setLink(LinkDirection direction, const QString& target) { m_Links[static_cast<int>(direction)] = target; }
         void clearLinks()
         {
@@ -125,6 +131,9 @@ class Screen : public BaseConfig
         int m_SwitchCornerSize;
         QList<bool> m_Fixes;
 
+        bool m_Bluetooth;
+        QString m_BluetoothBridgeAddress;
+        int m_BluetoothBridgePort;
         bool m_Swapped;
 };
 

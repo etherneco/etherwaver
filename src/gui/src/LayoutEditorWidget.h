@@ -26,6 +26,7 @@ public:
 
 public slots:
     void addScreen(const QString& defaultName = QString());
+    void addBluetoothDevice();
     void editSelectedScreen();
     void removeSelectedScreen();
     void autoLayout();

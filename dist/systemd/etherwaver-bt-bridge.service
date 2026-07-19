@@ -1,0 +1,20 @@
+[Unit]
+Description=EtherWaver Bluetooth HID bridge
+After=bluetooth.service network-online.target
+Wants=bluetooth.service network-online.target
+
+[Service]
+Type=simple
+User=daniel
+Group=daniel
+WorkingDirectory=/home/daniel/bluez/test
+EnvironmentFile=/etc/etherwaver/etherwaver-bt-bridge.env
+ExecStartPre=/usr/bin/bluetoothctl power on
+ExecStartPre=/usr/bin/bluetoothctl pairable on
+ExecStartPre=/usr/bin/bluetoothctl discoverable on
+ExecStart=/usr/bin/python3 -u /home/daniel/bluez/test/eth_etherwaver.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

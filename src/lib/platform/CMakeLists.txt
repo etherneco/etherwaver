@@ -33,12 +33,14 @@ if (UNIX AND NOT APPLE)
         "InputGrabber.h"
         "UhidInputDevices.h"
         "RouterCore.h"
-        "LinuxInputRouterDaemon.h")
+        "LinuxInputRouterDaemon.h"
+        "BluetoothBridgeDaemon.h")
     list(APPEND sources
         "InputGrabber.cpp"
         "UhidInputDevices.cpp"
         "RouterCore.cpp"
-        "LinuxInputRouterDaemon.cpp")
+        "LinuxInputRouterDaemon.cpp"
+        "BluetoothBridgeDaemon.cpp")
 endif()
 
 if (BARRIER_ADD_HEADERS)

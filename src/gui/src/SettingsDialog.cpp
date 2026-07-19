@@ -65,6 +65,13 @@ SettingsDialog::SettingsDialog(QWidget* parent, AppConfig& config) :
     m_pCheckBoxEnableUhid->setChecked(m_appConfig.getUhidEnabled());
     m_pLineEditUhidName->setText(m_appConfig.getUhidName());
     m_pLineEditUhidName->setEnabled(m_pCheckBoxEnableUhid->isChecked());
+    m_pCheckBoxEnableBluetoothBridge->setChecked(m_appConfig.getBluetoothBridgeEnabled());
+    m_pLineEditBluetoothBridgeAddress->setText(m_appConfig.getBluetoothBridgeAddress());
+    m_pSpinBoxBluetoothBridgePort->setValue(m_appConfig.getBluetoothBridgePort());
+    m_pLineEditBluetoothBridgeAddress->setEnabled(m_pCheckBoxEnableBluetoothBridge->isChecked());
+    m_pSpinBoxBluetoothBridgePort->setEnabled(m_pCheckBoxEnableBluetoothBridge->isChecked());
+    m_pLabelBluetoothBridgeAddress->setEnabled(m_pCheckBoxEnableBluetoothBridge->isChecked());
+    m_pLabelBluetoothBridgePort->setEnabled(m_pCheckBoxEnableBluetoothBridge->isChecked());
     checkbox_require_client_certificate->setChecked(m_appConfig.getRequireClientCertificate());
 
 #if defined(Q_OS_WIN)
@@ -92,6 +99,9 @@ void SettingsDialog::accept()
     m_appConfig.setCryptoEnabled(m_pCheckBoxEnableCrypto->isChecked());
     m_appConfig.setUhidEnabled(m_pCheckBoxEnableUhid->isChecked());
     m_appConfig.setUhidName(m_pLineEditUhidName->text().trimmed());
+    m_appConfig.setBluetoothBridgeEnabled(m_pCheckBoxEnableBluetoothBridge->isChecked());
+    m_appConfig.setBluetoothBridgeAddress(m_pLineEditBluetoothBridgeAddress->text());
+    m_appConfig.setBluetoothBridgePort(m_pSpinBoxBluetoothBridgePort->value());
     m_appConfig.setRequireClientCertificate(checkbox_require_client_certificate->isChecked());
     m_appConfig.setLogLevel(m_pComboLogLevel->currentIndex());
     m_appConfig.setLogToFile(m_pCheckBoxLogToFile->isChecked());
@@ -161,6 +171,14 @@ void SettingsDialog::on_m_pButtonBrowseLog_clicked()
 void SettingsDialog::on_m_pCheckBoxEnableUhid_toggled(bool checked)
 {
     m_pLineEditUhidName->setEnabled(checked);
+}
+
+void SettingsDialog::on_m_pCheckBoxEnableBluetoothBridge_toggled(bool checked)
+{
+    m_pLineEditBluetoothBridgeAddress->setEnabled(checked);
+    m_pSpinBoxBluetoothBridgePort->setEnabled(checked);
+    m_pLabelBluetoothBridgeAddress->setEnabled(checked);
+    m_pLabelBluetoothBridgePort->setEnabled(checked);
 }
 
 void SettingsDialog::on_m_pComboLanguage_currentIndexChanged(int index)

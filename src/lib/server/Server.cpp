@@ -19,6 +19,7 @@
 #include "server/Server.h"
 
 #include "server/ClientProxy.h"
+#include "server/BluetoothClientProxy.h"
 #include "server/ClientProxyUnknown.h"
 #include "server/PrimaryClient.h"
 #include "server/ClientListener.h"
@@ -58,6 +59,7 @@
 #include <ctime>
 #include <stdexcept>
 #include <cctype>
+#include <map>
 
 namespace {
 
@@ -118,6 +120,9 @@ serializeLayoutSnapshot(const etherwaver::layout::ScreenManager& layout)
              << "      \"id\": \"" << jsonEscape(it->m_id) << "\",\n"
              << "      \"host\": \"" << jsonEscape(it->m_hostId) << "\",\n"
              << "      \"name\": \"" << jsonEscape(it->m_name) << "\",\n"
+             << "      \"kind\": \"" << jsonEscape(it->m_kind) << "\",\n"
+             << "      \"bridgeAddress\": \"" << jsonEscape(it->m_bridgeAddress) << "\",\n"
+             << "      \"bridgePort\": " << it->m_bridgePort << ",\n"
              << "      \"x\": " << it->m_x << ",\n"
              << "      \"y\": " << it->m_y << ",\n"
              << "      \"width\": " << it->m_width << ",\n"
@@ -812,6 +817,33 @@ static bool
 matchesScreenOrHostName(const Config& config, const std::string& name)
 {
     return !resolveScreenOrHostName(config, name).empty();
+}
+
+static bool
+isBluetoothLayoutScreen(const etherwaver::layout::Screen& screen)
+{
+    return screen.m_kind == "bluetooth" ||
+           (!screen.m_bridgeAddress.empty() &&
+            screen.m_bridgeAddress != "127.0.0.1" &&
+            screen.m_bridgePort > 0) ||
+           screen.m_hostId.find("Bluetooth") == 0 ||
+           screen.m_name.find("Bluetooth") == 0 ||
+           screen.m_id.find("Bluetooth") != std::string::npos;
+}
+
+static std::string
+bluetoothEndpointForScreens(const std::vector<etherwaver::layout::Screen>& screens,
+                            const std::string& fallbackEndpoint)
+{
+    for (std::vector<etherwaver::layout::Screen>::const_iterator it = screens.begin();
+         it != screens.end(); ++it) {
+        if (!it->m_bridgeAddress.empty() && it->m_bridgePort > 0) {
+            std::ostringstream endpoint;
+            endpoint << it->m_bridgeAddress << ":" << it->m_bridgePort;
+            return endpoint.str();
+        }
+    }
+    return fallbackEndpoint;
 }
 
 } // namespace
@@ -1651,10 +1683,13 @@ Server::reloadScreenLayout()
         for (std::vector<etherwaver::layout::Screen>::const_iterator it = screens.begin();
              it != screens.end(); ++it) {
             LOG((CLOG_INFO
-                "object-layout loaded screen id=%s host=%s name=%s rect=%d,%d %dx%d links(L=%s R=%s U=%s D=%s)",
+                "object-layout loaded screen id=%s host=%s name=%s kind=%s bridge=%s:%d rect=%d,%d %dx%d links(L=%s R=%s U=%s D=%s)",
                 it->m_id.c_str(),
                 it->m_hostId.c_str(),
                 it->m_name.c_str(),
+                it->m_kind.empty() ? "<none>" : it->m_kind.c_str(),
+                it->m_bridgeAddress.empty() ? "<none>" : it->m_bridgeAddress.c_str(),
+                it->m_bridgePort,
                 it->m_x,
                 it->m_y,
                 it->m_width,
@@ -1665,6 +1700,8 @@ Server::reloadScreenLayout()
                 it->m_bottomLink.empty() ? "<none>" : it->m_bottomLink.c_str()));
         }
     }
+
+    syncBluetoothClients();
 
     const etherwaver::layout::Screen* activeScreen =
         m_screenLayout.getScreen(previousActiveScreenId);
@@ -1689,6 +1726,71 @@ Server::reloadScreenLayout()
     }
 
     refreshPrimaryUhidGeometry();
+}
+
+void
+Server::syncBluetoothClients()
+{
+    std::map<std::string, std::vector<etherwaver::layout::Screen> > screensByHost;
+    const std::vector<etherwaver::layout::Screen>& screens = m_screenLayout.getScreens();
+    for (std::vector<etherwaver::layout::Screen>::const_iterator it = screens.begin();
+         it != screens.end(); ++it) {
+        if (isBluetoothLayoutScreen(*it) && !it->m_hostId.empty()) {
+            screensByHost[it->m_hostId].push_back(*it);
+        }
+    }
+
+    std::vector<std::string> staleHosts;
+    for (std::map<std::string, std::unique_ptr<BluetoothClientProxy> >::iterator it =
+             m_bluetoothClients.begin();
+         it != m_bluetoothClients.end(); ++it) {
+        if (screensByHost.find(it->first) == screensByHost.end()) {
+            staleHosts.push_back(it->first);
+        }
+    }
+
+    for (std::vector<std::string>::const_iterator it = staleHosts.begin();
+         it != staleHosts.end(); ++it) {
+        BluetoothClientProxy* proxy = m_bluetoothClients[*it].get();
+        if (m_active == proxy) {
+            m_active = m_primaryClient;
+            m_activeLayoutScreenId = getName(m_primaryClient);
+        }
+        m_clients.erase(*it);
+        m_clientSet.erase(proxy);
+        m_bluetoothClients.erase(*it);
+        LOG((CLOG_NOTE "bluetooth bridge screen removed host=%s", it->c_str()));
+    }
+
+    for (std::map<std::string, std::vector<etherwaver::layout::Screen> >::iterator it =
+             screensByHost.begin();
+         it != screensByHost.end(); ++it) {
+        const std::string endpoint =
+            bluetoothEndpointForScreens(it->second, m_args.m_bluetoothBridgeAddress);
+        std::map<std::string, std::unique_ptr<BluetoothClientProxy> >::iterator existing =
+            m_bluetoothClients.find(it->first);
+        if (existing == m_bluetoothClients.end()) {
+            if (m_clients.find(it->first) != m_clients.end()) {
+                LOG((CLOG_WARN "bluetooth bridge host=%s conflicts with connected client",
+                     it->first.c_str()));
+                continue;
+            }
+
+            std::unique_ptr<BluetoothClientProxy> proxy(
+                new BluetoothClientProxy(it->first, endpoint));
+            BluetoothClientProxy* rawProxy = proxy.get();
+            rawProxy->updateScreens(it->second);
+            m_clients.insert(std::make_pair(it->first, rawProxy));
+            m_clientSet.insert(rawProxy);
+            m_bluetoothClients.insert(std::make_pair(it->first, std::move(proxy)));
+            LOG((CLOG_NOTE "bluetooth bridge screen added host=%s endpoint=%s",
+                 it->first.c_str(), endpoint.c_str()));
+            continue;
+        }
+
+        existing->second->setEndpoint(endpoint);
+        existing->second->updateScreens(it->second);
+    }
 }
 
 bool
@@ -1819,6 +1921,27 @@ Server::trySwitchUsingObjectLayout(SInt32 x, SInt32 y, bool absoluteMotion)
         (destinationScreen != NULL ? destinationScreen->m_id.c_str() : "<none>"),
         (directionalDestination != NULL ? directionalDestination->m_id.c_str() : "<none>"),
         (resolvedDestination != NULL ? resolvedDestination->m_id.c_str() : "<none>")));
+
+    // A Bluetooth HID target cannot report its real cursor position back to
+    // EtherWaver.  Its locally integrated coordinates will eventually reach
+    // an artificial edge, but that says nothing about the pointer on the
+    // paired device.  Never use mouse edges to enter or leave such a target;
+    // explicit switchToScreen hotkeys remain authoritative in both directions.
+    if (isBluetoothLayoutScreen(*sourceScreen) ||
+        (resolvedDestination != NULL && isBluetoothLayoutScreen(*resolvedDestination))) {
+        const SInt32 holdX = clampInt(x, ax, ax + aw - 1);
+        const SInt32 holdY = clampInt(y, ay, ay + ah - 1);
+        LOG((CLOG_INFO
+            "object-layout switch rejected sourceScreen=%s destination=%s reason=bluetooth-hotkey-only",
+            sourceScreen->m_id.c_str(),
+            resolvedDestination != NULL ? resolvedDestination->m_id.c_str() : "<none>"));
+        m_active->mouseMove(holdX, holdY);
+        m_x = holdX;
+        m_y = holdY;
+        noSwitch(holdX, holdY);
+        return false;
+    }
+
     if (direction == kNoDirection &&
         resolvedDestination != NULL &&
         resolvedDestination->m_id != sourceScreen->m_id &&
@@ -4012,7 +4135,10 @@ Server::onMouseMoveSecondary(SInt32 dx, SInt32 dy)
 	// the mouse isn't actually moving because we're expecting some
 	// program on the secondary screen to warp the mouse on us, so we
 	// have no idea where it really is.
-	if (m_relativeMoves && isLockedToScreenServer()) {
+    const bool activeIsBluetooth =
+        dynamic_cast<BluetoothClientProxy*>(m_active) != NULL;
+    if (m_relativeMoves && isLockedToScreenServer() &&
+        !(usingObjectLayout() && activeIsBluetooth)) {
 		LOG((CLOG_DEBUG2 "relative move on %s by %d,%d", getName(m_active).c_str(), dx, dy));
 		m_active->mouseRelativeMove(dx, dy);
 		return;
@@ -4433,12 +4559,35 @@ Server::closeClients(const Config& config)
 	// from the configuration (or who's canonical name is changing).
 	typedef std::set<BaseClientProxy*> RemovedClients;
 	RemovedClients removed;
+    std::vector<std::string> removedBluetoothHosts;
 	for (ClientList::iterator index = m_clients.begin();
 								index != m_clients.end(); ++index) {
+        if (m_bluetoothClients.find(index->first) != m_bluetoothClients.end()) {
+            if (!config.isCanonicalName(index->first)) {
+                removedBluetoothHosts.push_back(index->first);
+            }
+            continue;
+        }
 		if (!config.isCanonicalName(index->first)) {
 			removed.insert(index->second);
 		}
 	}
+
+    for (std::vector<std::string>::const_iterator it = removedBluetoothHosts.begin();
+         it != removedBluetoothHosts.end(); ++it) {
+        std::map<std::string, std::unique_ptr<BluetoothClientProxy> >::iterator proxy =
+            m_bluetoothClients.find(*it);
+        if (proxy == m_bluetoothClients.end()) {
+            continue;
+        }
+        if (m_active == proxy->second.get()) {
+            m_active = m_primaryClient;
+            m_activeLayoutScreenId = getName(m_primaryClient);
+        }
+        m_clientSet.erase(proxy->second.get());
+        m_clients.erase(*it);
+        m_bluetoothClients.erase(proxy);
+    }
 
 	// don't close the primary client
 	removed.erase(m_primaryClient);

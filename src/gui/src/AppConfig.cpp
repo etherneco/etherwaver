@@ -63,7 +63,10 @@ AppConfig::AppConfig(QSettings* settings) :
     m_AutoStart(false),
     m_MinimizeToTray(false),
     m_UhidEnabled(false),
-    m_UhidName("EtherWaver UHID")
+    m_UhidName("EtherWaver UHID"),
+    m_BluetoothBridgeEnabled(false),
+    m_BluetoothBridgeAddress("127.0.0.1"),
+    m_BluetoothBridgePort(24810)
 {
     Q_ASSERT(m_pSettings);
 
@@ -170,6 +173,9 @@ void AppConfig::loadSettings()
     m_MinimizeToTray = settings().value("minimizeToTray", false).toBool();
     m_UhidEnabled = settings().value("uhidEnabled", false).toBool();
     m_UhidName = settings().value("uhidName", "EtherWaver UHID").toString();
+    m_BluetoothBridgeEnabled = settings().value("bluetoothBridgeEnabled", false).toBool();
+    m_BluetoothBridgeAddress = settings().value("bluetoothBridgeAddress", "127.0.0.1").toString();
+    m_BluetoothBridgePort = settings().value("bluetoothBridgePort", 24810).toInt();
 }
 
 void AppConfig::saveSettings()
@@ -197,6 +203,9 @@ void AppConfig::saveSettings()
     settings().setValue("minimizeToTray", m_MinimizeToTray);
     settings().setValue("uhidEnabled", m_UhidEnabled);
     settings().setValue("uhidName", m_UhidName);
+    settings().setValue("bluetoothBridgeEnabled", m_BluetoothBridgeEnabled);
+    settings().setValue("bluetoothBridgeAddress", m_BluetoothBridgeAddress);
+    settings().setValue("bluetoothBridgePort", m_BluetoothBridgePort);
     settings().sync();
 }
 
@@ -263,3 +272,15 @@ bool AppConfig::getUhidEnabled() const { return m_UhidEnabled; }
 void AppConfig::setUhidName(const QString& name) { m_UhidName = name; }
 
 const QString& AppConfig::getUhidName() const { return m_UhidName; }
+
+void AppConfig::setBluetoothBridgeEnabled(bool enabled) { m_BluetoothBridgeEnabled = enabled; }
+
+bool AppConfig::getBluetoothBridgeEnabled() const { return m_BluetoothBridgeEnabled; }
+
+void AppConfig::setBluetoothBridgeAddress(const QString& address) { m_BluetoothBridgeAddress = address.trimmed(); }
+
+const QString& AppConfig::getBluetoothBridgeAddress() const { return m_BluetoothBridgeAddress; }
+
+void AppConfig::setBluetoothBridgePort(int port) { m_BluetoothBridgePort = port; }
+
+int AppConfig::getBluetoothBridgePort() const { return m_BluetoothBridgePort; }

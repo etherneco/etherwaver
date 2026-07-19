@@ -65,6 +65,12 @@ ArgParser::parseServerArgs(ServerArgs& args, int argc, const char* const* argv)
             // save screen change script path
             args.m_screenChangeScript = argv[++i];
         }
+        else if (isArg(i, argc, argv, NULL, "--bluetooth-bridge", 1)) {
+            args.m_bluetoothBridgeAddress = argv[++i];
+        }
+        else if (strncmp(argv[i], "--bluetooth-bridge=", 19) == 0) {
+            args.m_bluetoothBridgeAddress = argv[i] + 19;
+        }
         else if (isArg(i, argc, argv, nullptr, "--disable-client-cert-checking")) {
             args.check_client_certificates = false;
         } else {

@@ -1142,6 +1142,13 @@ bool MainWindow::serverArgs(QStringList& args, QString& app)
 
     QString configFilename = this->configFilename();
     args << "-c" << configFilename << "--address" << address();
+    if (appConfig().getBluetoothBridgeEnabled()) {
+        const QString bridgeAddress = appConfig().getBluetoothBridgeAddress().trimmed().isEmpty()
+            ? "127.0.0.1"
+            : appConfig().getBluetoothBridgeAddress().trimmed();
+        args << "--bluetooth-bridge"
+             << QString("%1:%2").arg(bridgeAddress).arg(appConfig().getBluetoothBridgePort());
+    }
 
     return true;
 }

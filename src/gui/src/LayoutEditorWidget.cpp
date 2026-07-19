@@ -120,6 +120,46 @@ LayoutEditorWidget::addScreen(const QString& defaultName)
 }
 
 void
+LayoutEditorWidget::addBluetoothDevice()
+{
+    const int slot = findFreeSlot();
+    if (slot == -1) {
+        return;
+    }
+
+    int deviceNumber = 1;
+    for (;;) {
+        const QString candidate = QString("Bluetooth-%1").arg(deviceNumber);
+        bool exists = false;
+        for (std::vector<Screen>::const_iterator it = m_screens.begin(); it != m_screens.end(); ++it) {
+            if (!it->isNull() && it->name().compare(candidate, Qt::CaseInsensitive) == 0) {
+                exists = true;
+                break;
+            }
+        }
+        if (!exists) {
+            break;
+        }
+        ++deviceNumber;
+    }
+
+    Screen screen(QString("Bluetooth-%1").arg(deviceNumber));
+    screen.setBluetooth(true);
+    ensureGeometry(screen, slot);
+
+    QWidget* dialogParent = window();
+    ScreenSettingsDialog dialog(dialogParent, &screen);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    m_screens[slot] = screen;
+    setSelectedIndex(slot);
+    updateHoverState(m_lastMousePos);
+    update();
+}
+
+void
 LayoutEditorWidget::editSelectedScreen()
 {
     if (m_selectedIndex < 0 || m_selectedIndex >= static_cast<int>(m_screens.size())) {

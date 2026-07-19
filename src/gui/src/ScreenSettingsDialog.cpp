@@ -105,6 +105,10 @@ ScreenSettingsDialog::ScreenSettingsDialog(QWidget* parent, Screen* pScreen) :
     m_pLineEditName->setValidator(new QRegExpValidator(ValidScreenName, m_pLineEditName));
     normalizeNameWidgets(m_pScreen->name(), 1);
     m_pLineEditName->selectAll();
+    m_pCheckBoxBluetooth->setChecked(m_pScreen->isBluetooth());
+    m_pLineEditBluetoothBridgeAddress->setText(m_pScreen->bluetoothBridgeAddress());
+    m_pSpinBoxBluetoothBridgePort->setValue(m_pScreen->bluetoothBridgePort());
+    on_m_pCheckBoxBluetooth_toggled(m_pCheckBoxBluetooth->isChecked());
 
     m_pLineEditAlias->setValidator(new QRegExpValidator(ValidScreenName, m_pLineEditName));
 
@@ -147,6 +151,9 @@ void ScreenSettingsDialog::accept()
 
     const QString fullName = composedScreenName();
     m_pScreen->setName(fullName);
+    m_pScreen->setBluetooth(m_pCheckBoxBluetooth->isChecked());
+    m_pScreen->setBluetoothBridgeAddress(m_pLineEditBluetoothBridgeAddress->text());
+    m_pScreen->setBluetoothBridgePort(m_pSpinBoxBluetoothBridgePort->value());
 
     for (int i = 0; i < m_pListAliases->count(); i++)
     {
@@ -205,6 +212,14 @@ void ScreenSettingsDialog::on_m_pLineEditAlias_textChanged(const QString& text)
 void ScreenSettingsDialog::on_m_pLineEditName_textChanged(const QString& text)
 {
     normalizeNameWidgets(text, m_pSpinBoxNumber->value());
+}
+
+void ScreenSettingsDialog::on_m_pCheckBoxBluetooth_toggled(bool checked)
+{
+    m_pLabelBluetoothBridgeAddress->setEnabled(checked);
+    m_pLineEditBluetoothBridgeAddress->setEnabled(checked);
+    m_pLabelBluetoothBridgePort->setEnabled(checked);
+    m_pSpinBoxBluetoothBridgePort->setEnabled(checked);
 }
 
 void ScreenSettingsDialog::on_m_pButtonRemoveAlias_clicked()

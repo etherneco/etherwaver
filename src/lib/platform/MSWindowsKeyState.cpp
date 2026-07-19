@@ -735,6 +735,19 @@ MSWindowsKeyState::mapKeyToVirtualKey(KeyID key) const
 	}
 	KeyToVKMap::const_iterator i = m_keyToVKMap.find(key);
 	if (i == m_keyToVKMap.end()) {
+		// Windows assigns ASCII-compatible virtual-key values to the top-row
+		// digits and Latin letters.  Some keyboard layouts do not populate
+		// m_keyToVKMap for these printable keys, which used to make otherwise
+		// valid global shortcuts such as Ctrl+Win+1 impossible to register.
+		if (key >= '0' && key <= '9') {
+			return static_cast<UINT>(key);
+		}
+		if (key >= 'a' && key <= 'z') {
+			return static_cast<UINT>(key - 'a' + 'A');
+		}
+		if (key >= 'A' && key <= 'Z') {
+			return static_cast<UINT>(key);
+		}
 		return 0;
 	}
 	else {

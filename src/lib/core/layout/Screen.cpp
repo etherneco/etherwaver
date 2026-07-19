@@ -18,10 +18,13 @@ Screen::Screen(const std::string& id,
                int y,
                int width,
                int height,
+               const std::string& kind,
                const std::string& leftLink,
                const std::string& rightLink,
                const std::string& topLink,
-               const std::string& bottomLink) :
+               const std::string& bottomLink,
+               const std::string& bridgeAddress,
+               int bridgePort) :
     m_id(id),
     m_hostId(hostId),
     m_name(name),
@@ -29,10 +32,13 @@ Screen::Screen(const std::string& id,
     m_y(y),
     m_width(width),
     m_height(height),
+    m_kind(kind),
     m_leftLink(leftLink),
     m_rightLink(rightLink),
     m_topLink(topLink),
-    m_bottomLink(bottomLink)
+    m_bottomLink(bottomLink),
+    m_bridgeAddress(bridgeAddress),
+    m_bridgePort(bridgePort)
 {
 }
 

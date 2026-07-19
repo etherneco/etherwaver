@@ -20,7 +20,8 @@
 ServerArgs::ServerArgs() :
     m_configFile(),
     m_config(NULL),
-    m_screenChangeScript()
+    m_screenChangeScript(),
+    m_bluetoothBridgeAddress("127.0.0.1:24810")
 {
 }
 

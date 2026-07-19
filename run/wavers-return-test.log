@@ -1,0 +1,30 @@
+[2026-07-17T00:21:48] INFO: object-layout loaded screen id=BluetoothPi:BluetoothPi-1 host=BluetoothPi name=BluetoothPi-1 kind=<none> bridge=<none>:0 rect=-1920,0 1920x1080 links(L=<none> R=Siloe:Siloe-1 U=<none> D=<none>)
+[2026-07-17T00:21:48] INFO: object-layout loaded screen id=KANAAN:KANAAN-1 host=KANAAN name=KANAAN-1 kind=<none> bridge=<none>:0 rect=0,-1080 1920x1080 links(L=<none> R=<none> U=<none> D=Siloe:Siloe-1)
+[2026-07-17T00:21:49] INFO: object-layout loaded screen id=KANAAN:KANAAN-2 host=KANAAN name=KANAAN-2 kind=<none> bridge=<none>:0 rect=0,1080 1920x1080 links(L=<none> R=<none> U=Siloe:Siloe-1 D=<none>)
+[2026-07-17T00:21:49] INFO: object-layout loaded screen id=mamre:mamre-1 host=mamre name=mamre-1 kind=<none> bridge=<none>:0 rect=1920,0 1920x1080 links(L=Siloe:Siloe-1 R=<none> U=<none> D=<none>)
+[2026-07-17T00:21:49] INFO: object-layout loaded screen id=Siloe:Siloe-1 host=Siloe name=Siloe-1 kind=<none> bridge=<none>:0 rect=0,0 1920x1080 links(L=BluetoothPi:BluetoothPi-1 R=mamre:mamre-1 U=KANAAN:KANAAN-1 D=KANAAN:KANAAN-2)
+[2026-07-17T00:21:49] NOTE: bluetooth bridge screen added host=BluetoothPi endpoint=10.1.30.33:24810
+[2026-07-17T00:21:49] INFO: object-layout loaded screen id=BluetoothPi:BluetoothPi-1 host=BluetoothPi name=BluetoothPi-1 kind=<none> bridge=<none>:0 rect=-1920,0 1920x1080 links(L=<none> R=Siloe:Siloe-1 U=<none> D=<none>)
+[2026-07-17T00:21:49] INFO: object-layout loaded screen id=KANAAN:KANAAN-1 host=KANAAN name=KANAAN-1 kind=<none> bridge=<none>:0 rect=0,-1080 1920x1080 links(L=<none> R=<none> U=<none> D=Siloe:Siloe-1)
+[2026-07-17T00:21:49] INFO: object-layout loaded screen id=KANAAN:KANAAN-2 host=KANAAN name=KANAAN-2 kind=<none> bridge=<none>:0 rect=0,1080 1920x1080 links(L=<none> R=<none> U=Siloe:Siloe-1 D=<none>)
+[2026-07-17T00:21:49] INFO: object-layout loaded screen id=mamre:mamre-1 host=mamre name=mamre-1 kind=<none> bridge=<none>:0 rect=1920,0 1920x1080 links(L=Siloe:Siloe-1 R=<none> U=<none> D=<none>)
+[2026-07-17T00:21:49] INFO: object-layout loaded screen id=Siloe:Siloe-1 host=Siloe name=Siloe-1 kind=<none> bridge=<none>:0 rect=0,0 1920x1080 links(L=BluetoothPi:BluetoothPi-1 R=mamre:mamre-1 U=KANAAN:KANAAN-1 D=KANAAN:KANAAN-2)
+[2026-07-17T00:21:49] NOTE: bluetooth bridge screen added host=BluetoothPi endpoint=10.1.30.33:24810
+started server (IPv4/IPv6), waiting for clients
+[2026-07-17T00:21:49] INFO: object-layout loaded screen id=BluetoothPi:BluetoothPi-1 host=BluetoothPi name=BluetoothPi-1 kind=<none> bridge=<none>:0 rect=-1920,0 1920x1080 links(L=<none> R=Siloe:Siloe-1 U=<none> D=<none>)
+[2026-07-17T00:21:49] INFO: object-layout loaded screen id=KANAAN:KANAAN-1 host=KANAAN name=KANAAN-1 kind=<none> bridge=<none>:0 rect=0,-1080 1920x1080 links(L=<none> R=<none> U=<none> D=Siloe:Siloe-1)
+[2026-07-17T00:21:49] INFO: object-layout loaded screen id=KANAAN:KANAAN-2 host=KANAAN name=KANAAN-2 kind=<none> bridge=<none>:0 rect=0,1080 1920x1080 links(L=<none> R=<none> U=Siloe:Siloe-1 D=<none>)
+[2026-07-17T00:21:49] INFO: object-layout loaded screen id=mamre:mamre-1 host=mamre name=mamre-1 kind=<none> bridge=<none>:0 rect=1920,0 1920x1080 links(L=Siloe:Siloe-1 R=<none> U=<none> D=<none>)
+[2026-07-17T00:21:49] INFO: object-layout loaded screen id=Siloe:Siloe-1 host=Siloe name=Siloe-1 kind=<none> bridge=<none>:0 rect=0,0 1920x1080 links(L=BluetoothPi:BluetoothPi-1 R=mamre:mamre-1 U=KANAAN:KANAAN-1 D=KANAAN:KANAAN-2)
+[2026-07-17T00:21:49] INFO: object-layout primary no-edge activeHost=Siloe-1 pos=960,540 hostScreen=Siloe:Siloe-1 localScreen=0,0..1919,1079 desktop=0,0 1920x1080
+[2026-07-17T00:21:51] INFO: object-layout primary edge activeHost=Siloe-1 pos=0,540 dirh=left dirv=none xh=-1 yv=540
+[2026-07-17T00:21:51] INFO: object-layout primary attempt activeHost=Siloe-1 direction=left x=-1 y=540
+[2026-07-17T00:21:51] INFO: object-layout evaluate activeClient=Siloe-1 activeLayout=Siloe:Siloe-1 sourceScreen=Siloe:Siloe-1 absolute=yes local=-1,540 localScreen=0,0 1920x1080 direction=left global=-1,540
+[2026-07-17T00:21:51] INFO: object-layout resolve sourceScreen=Siloe:Siloe-1 direction=left directDestination=<none> directionalDestination=BluetoothPi:BluetoothPi-1 resolvedDestination=BluetoothPi:BluetoothPi-1
+[2026-07-17T00:21:51] INFO: object-layout target sourceScreen=Siloe:Siloe-1 destinationScreen=BluetoothPi:BluetoothPi-1 destinationRect=-1920,0 1920x1080 target=-1,540 direction=left
+[2026-07-17T00:21:51] INFO: object-layout switch accepted sourceScreen=Siloe:Siloe-1 destination=BluetoothPi:BluetoothPi-1 client=BluetoothPi target=-1,540
+[2026-07-17T00:21:51] INFO: switch from "Siloe-1" to "BluetoothPi" at -1,540
+[2026-07-17T00:21:51] INFO: leaving screen
+[2026-07-17T00:21:51] INFO: screen "Siloe-1" updated clipboard 0
+[2026-07-17T00:21:51] INFO: screen "Siloe-1" updated clipboard 1
+[2026-07-17T00:21:51] NOTE: bluetooth bridge connected host=BluetoothPi endpoint=10.1.30.33:24810

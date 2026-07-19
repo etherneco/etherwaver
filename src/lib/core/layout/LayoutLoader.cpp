@@ -107,10 +107,13 @@ private:
         std::string id;
         std::string host;
         std::string name;
+        std::string kind;
         std::string leftLink;
         std::string rightLink;
         std::string topLink;
         std::string bottomLink;
+        std::string bridgeAddress;
+        int bridgePort = 0;
         int x = 0;
         int y = 0;
         int width = 0;
@@ -137,6 +140,15 @@ private:
             }
             else if (key == "name") {
                 name = parseString();
+            }
+            else if (key == "kind") {
+                kind = parseString();
+            }
+            else if (key == "bridgeAddress") {
+                bridgeAddress = parseString();
+            }
+            else if (key == "bridgePort") {
+                bridgePort = parseInt();
             }
             else if (key == "x") {
                 x = parseInt();
@@ -192,8 +204,9 @@ private:
             id = host + ":" + name;
         }
 
-        return etherwaver::layout::Screen(id, host, name, x, y, width, height,
-                                          leftLink, rightLink, topLink, bottomLink);
+        return etherwaver::layout::Screen(id, host, name, x, y, width, height, kind,
+                                          leftLink, rightLink, topLink, bottomLink,
+                                          bridgeAddress, bridgePort);
     }
 
     void parseLinks(std::string& leftLink,
@@ -1190,7 +1203,8 @@ convertConfigLogicalScreensToObjectLayout(
                                                      pos.first,
                                                      pos.second,
                                                      bounds.width(),
-                                                     bounds.height()));
+                                                     bounds.height(),
+                                                     std::string()));
     }
 
     for (size_t i = 0; i < screens.size(); ++i) {
@@ -1274,7 +1288,14 @@ normalizeJsonLayout(const etherwaver::layout::ScreenManager& manager,
                                                left,
                                                top,
                                                std::max(1, right - left),
-                                               std::max(1, bottom - top)));
+                                               std::max(1, bottom - top),
+                                               it->m_kind,
+                                               std::string(),
+                                               std::string(),
+                                               std::string(),
+                                               std::string(),
+                                               it->m_bridgeAddress,
+                                               it->m_bridgePort));
             }
             continue;
         }
@@ -1491,7 +1512,8 @@ LayoutLoader::convertConfigToObjectLayout(const Config& config,
                                      hostOriginX + (screen->m_x - bounds.m_minX),
                                      hostOriginY + (screen->m_y - bounds.m_minY),
                                      screen->m_w,
-                                     screen->m_h));
+                                     screen->m_h,
+                                     std::string()));
         }
     }
 

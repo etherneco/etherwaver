@@ -1,0 +1,69 @@
+[2026-07-17T20:46:43] DEBUG: opening configuration "C:\projects.local\etherwaver\run\etherwaver-dev.conf"
+[2026-07-17T20:46:43] DEBUG: configuration read successfully
+[2026-07-17T20:46:43] DEBUG1: starting server
+[2026-07-17T20:46:43] DEBUG1: thread 0x00004388 entry
+[2026-07-17T20:46:43] DEBUG: screen shape: 0,0 1920x1080 
+[2026-07-17T20:46:43] DEBUG: window is 0x001e02f8
+[2026-07-17T20:46:43] DEBUG: adopting new buffer
+[2026-07-17T20:46:43] DEBUG: opened display
+[2026-07-17T20:46:43] DEBUG1: registered event type IScreenEvents::error as 4
+[2026-07-17T20:46:43] DEBUG1: registered event type IScreenEvents::suspend as 5
+[2026-07-17T20:46:43] DEBUG1: registered event type IScreenEvents::resume as 6
+[2026-07-17T20:46:43] DEBUG1: creating primary screen
+[2026-07-17T20:46:43] DEBUG1: registered event type IListenSocketEvents::connecting as 7
+[2026-07-17T20:46:43] DEBUG1: binding listen socket
+[2026-07-17T20:46:43] DEBUG1: listening for clients
+[2026-07-17T20:46:43] DEBUG1: registered event type ClientListenerEvents::connected as 8
+[2026-07-17T20:46:43] DEBUG1: registered event type IKeyStateEvents::keyDown as 9
+[2026-07-17T20:46:43] DEBUG1: registered event type IKeyStateEvents::keyUp as 10
+[2026-07-17T20:46:43] DEBUG1: registered event type IKeyStateEvents::keyRepeat as 11
+[2026-07-17T20:46:43] DEBUG1: registered event type IPrimaryScreenEvents::buttonDown as 12
+[2026-07-17T20:46:43] DEBUG1: registered event type IPrimaryScreenEvents::buttonUp as 13
+[2026-07-17T20:46:43] DEBUG1: registered event type IPrimaryScreenEvents::motionOnPrimary as 14
+[2026-07-17T20:46:43] DEBUG1: registered event type IPrimaryScreenEvents::motionOnSecondary as 15
+[2026-07-17T20:46:43] DEBUG1: registered event type IPrimaryScreenEvents::wheel as 16
+[2026-07-17T20:46:43] DEBUG1: registered event type IPrimaryScreenEvents::screensaverActivated as 17
+[2026-07-17T20:46:43] DEBUG1: registered event type IPrimaryScreenEvents::screensaverDeactivated as 18
+[2026-07-17T20:46:43] DEBUG1: registered event type ServerEvents::switchToScreen as 19
+[2026-07-17T20:46:43] DEBUG1: registered event type ServerEvents::toggleScreen as 20
+[2026-07-17T20:46:43] DEBUG1: registered event type ServerEvents::switchInDirection as 21
+[2026-07-17T20:46:43] DEBUG1: registered event type ServerEvents::keyboardBroadcast as 22
+[2026-07-17T20:46:43] DEBUG1: registered event type ServerEvents::lockCursorToScreen as 23
+[2026-07-17T20:46:43] DEBUG1: registered event type IPrimaryScreenEvents::fakeInputBegin as 24
+[2026-07-17T20:46:43] DEBUG1: registered event type IPrimaryScreenEvents::fakeInputEnd as 25
+[2026-07-17T20:46:43] DEBUG1: registered event type IScreenEvents::shapeChanged as 26
+[2026-07-17T20:46:43] DEBUG1: registered event type ClipboardEvents::clipboardGrabbed as 27
+[2026-07-17T20:46:43] DEBUG1: registered event type ClipboardEvents::clipboardChanged as 28
+[2026-07-17T20:46:43] INFO: object-layout loaded screen id=BluetoothPi:BluetoothPi-1 host=BluetoothPi name=BluetoothPi-1 kind=bluetooth bridge=10.1.30.33:24810 rect=41,43 240x140 links(L=<none> R=<none> U=<none> D=<none>)
+[2026-07-17T20:46:43] INFO: object-layout loaded screen id=Siloe:Siloe-1 host=Siloe name=Siloe-1 kind=screen bridge=<none>:0 rect=293,43 240x140 links(L=<none> R=<none> U=<none> D=<none>)
+[2026-07-17T20:46:43] NOTE: bluetooth bridge screen added host=BluetoothPi endpoint=10.1.30.33:24810
+[2026-07-17T20:46:43] DEBUG: active sides: 0
+[2026-07-17T20:46:43] INFO: object-layout loaded screen id=BluetoothPi:BluetoothPi-1 host=BluetoothPi name=BluetoothPi-1 kind=bluetooth bridge=10.1.30.33:24810 rect=41,43 240x140 links(L=<none> R=<none> U=<none> D=<none>)
+[2026-07-17T20:46:43] INFO: object-layout loaded screen id=Siloe:Siloe-1 host=Siloe name=Siloe-1 kind=screen bridge=<none>:0 rect=293,43 240x140 links(L=<none> R=<none> U=<none> D=<none>)
+[2026-07-17T20:46:43] DEBUG: active sides: 0
+[2026-07-17T20:46:43] DEBUG1: modifiers on update: 0x2000
+[2026-07-17T20:46:43] DEBUG1: thread 0x0000363c entry
+[2026-07-17T20:46:43] DEBUG: desk Default window is 0x00220282
+[2026-07-17T20:46:43] DEBUG: switched to desk "Default"
+[2026-07-17T20:46:43] DEBUG: desktop is now accessible
+[2026-07-17T20:46:43] DEBUG: Found 0 immune keys in C:\Users\ether\AppData\Local\EtherWaver\ImmuneKeys.txt
+[2026-07-17T20:46:43] DEBUG1: modifiers on update: 0x2000
+[2026-07-17T20:46:43] DEBUG1: modifiers on update: 0x2000
+[2026-07-17T20:46:43] DEBUG1: registered event type IPrimaryScreenEvents::hotKeyDown as 29
+[2026-07-17T20:46:43] DEBUG1: registered event type IPrimaryScreenEvents::hotKeyUp as 30
+[2026-07-17T20:46:43] DEBUG1: registered event type ServerEvents::connected as 31
+[2026-07-17T20:46:43] DEBUG: registered hotkey Control+Alt+b (id=0062 mask=0006) as id=1
+[2026-07-17T20:46:43] DEBUG: registered hotkey Control+Alt+p (id=0070 mask=0006) as id=2
+[2026-07-17T20:46:43] DEBUG: registered hotkey ScrollLock (id=ef14 mask=0000) as id=3
+[2026-07-17T20:46:43] DEBUG1: registered event type ServerEvents::disconnected as 32
+[2026-07-17T20:46:43] DEBUG1: registered event type ServerEvents::screenSwitched as 33
+started server (IPv4), waiting for clients
+[2026-07-17T20:46:43] DEBUG1: registered event type ServerAppEvents::reloadConfig as 34
+[2026-07-17T20:46:43] DEBUG1: registered event type ServerAppEvents::forceReconnect as 35
+[2026-07-17T20:46:43] DEBUG1: registered event type ServerAppEvents::resetServer as 36
+[2026-07-17T20:46:43] DEBUG: event queue is ready
+[2026-07-17T20:46:43] DEBUG: add pending events to buffer
+[2026-07-17T20:46:43] DEBUG: screen "Siloe" shape changed
+[2026-07-17T20:46:43] INFO: object-layout loaded screen id=BluetoothPi:BluetoothPi-1 host=BluetoothPi name=BluetoothPi-1 kind=bluetooth bridge=10.1.30.33:24810 rect=41,43 240x140 links(L=<none> R=<none> U=<none> D=<none>)
+[2026-07-17T20:46:43] INFO: object-layout loaded screen id=Siloe:Siloe-1 host=Siloe name=Siloe-1 kind=screen bridge=<none>:0 rect=293,43 240x140 links(L=<none> R=<none> U=<none> D=<none>)
+[2026-07-17T20:46:43] INFO: object-layout primary no-edge activeHost=Siloe pos=1488,888 hostScreen=Siloe:Siloe-1 localScreen=0,0..1919,1079 desktop=0,0 1920x1080

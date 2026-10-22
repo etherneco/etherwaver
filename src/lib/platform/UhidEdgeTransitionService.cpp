@@ -5,11 +5,7 @@
 #include <algorithm>
 
 UhidEdgeTransitionService::Config::Config()
-    : m_leftThreshold(40)
-    , m_rightThreshold(40)
-    , m_topThreshold(40)
-    , m_bottomThreshold(40)
-    , m_virtualMin(-10000)
+    : m_virtualMin(-10000)
     , m_virtualMax(10000)
     , m_warpOffset(40)
     , m_cooldownMs(300)

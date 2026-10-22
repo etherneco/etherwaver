@@ -20,10 +20,6 @@ long long monotonic_ms()
 UhidEdgeTransitionService::Config make_edge_config(const RouterCore::Config& config)
 {
     UhidEdgeTransitionService::Config edgeConfig;
-    edgeConfig.m_leftThreshold = config.m_edgeThreshold;
-    edgeConfig.m_rightThreshold = config.m_edgeThreshold;
-    edgeConfig.m_topThreshold = config.m_edgeThreshold;
-    edgeConfig.m_bottomThreshold = config.m_edgeThreshold;
     edgeConfig.m_debugLogging = config.m_debugEvents;
     return edgeConfig;
 }
@@ -144,7 +140,6 @@ RouterCore::Config::Config()
     : m_uhidName("Etherwaver")
     , m_screenWidth(1920)
     , m_screenHeight(1080)
-    , m_edgeThreshold(40)
     , m_debugEvents(false)
 {
 }
@@ -235,10 +230,9 @@ RouterCore::start()
     }
 
     LOG((CLOG_NOTE
-        "router-core: started screen=%dx%d threshold=%d",
+        "router-core: started screen=%dx%d",
         m_config.m_screenWidth,
-        m_config.m_screenHeight,
-        m_config.m_edgeThreshold));
+        m_config.m_screenHeight));
     return true;
 }
 
@@ -318,7 +312,7 @@ void
 RouterCore::routeEvent(const input_event& event, const std::string& devicePath)
 {
     if (m_failsafeTracker.observe(event)) {
-        activateFailsafeUnlock();
+        toggleFailsafeSuspend();
         return;
     }
 
@@ -351,9 +345,7 @@ RouterCore::routeEvent(const input_event& event, const std::string& devicePath)
             m_pendingWheelY += event.value;
             break;
         default:
-            if (m_activeSystem != ActiveSystem::Local) {
-                m_bridge.sendInput(event, devicePath);
-            }
+            // Forwarded by the shared send below, like every other EV_REL code.
             break;
         }
 
@@ -469,15 +461,26 @@ RouterCore::releaseLocalState()
 }
 
 void
-RouterCore::activateFailsafeUnlock()
+RouterCore::toggleFailsafeSuspend()
 {
     if (m_suspended) {
+        // The virtual cursor has been free-running while suspended, so start
+        // again from the middle of the local screen rather than wherever it
+        // drifted to.
+        m_edgeService.resetVirtualCursor();
+        m_suspended = false;
+        if (m_grabControlCallback) {
+            m_grabControlCallback(true);
+        }
+        LOG((CLOG_WARN "router-core: failsafe cleared, routing resumed on local"));
         return;
     }
 
     m_suspended = true;
     flushPendingRelative();
     releaseLocalState();
+    m_activeSystem = ActiveSystem::Local;
+    m_bridge.switchSystem(EtherwaverBridge::RemoteTarget::None);
     if (m_grabControlCallback) {
         m_grabControlCallback(false);
     }

@@ -21,7 +21,6 @@ public:
         std::string m_uhidName;
         int m_screenWidth;
         int m_screenHeight;
-        int m_edgeThreshold;
         int m_rescanIntervalMs;
         std::string m_logLevel;
         bool m_debugEvents;

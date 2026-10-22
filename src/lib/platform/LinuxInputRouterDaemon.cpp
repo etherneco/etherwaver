@@ -1,6 +1,7 @@
 #include "platform/LinuxInputRouterDaemon.h"
 
 #include "base/Log.h"
+#include "common/EtherwaverRuntimePaths.h"
 #include "config.h"
 
 #if defined(__linux__)
@@ -487,12 +488,11 @@ LinuxInputRouterDaemon::Config::Config()
     : m_uhidName("Etherwaver")
     , m_screenWidth(1920)
     , m_screenHeight(1080)
-    , m_edgeThreshold(40)
     , m_rescanIntervalMs(1000)
     , m_logLevel("INFO")
     , m_debugEvents(false)
     , m_cursorPositionServer(false)
-    , m_cursorPositionSocket("/tmp/etherwaver-cursor.sock")
+    , m_cursorPositionSocket(etherwaver::cursorPositionSocketPath())
     , m_cursorPositionOriginSet(false)
     , m_cursorPositionOriginX(0)
     , m_cursorPositionOriginY(0)
@@ -634,7 +634,10 @@ LinuxInputRouterDaemon::parseArgs(int argc, char** argv)
             continue;
         }
         if (arg == "--edge-threshold" && i + 1 < argc) {
-            m_config.m_edgeThreshold = atoi(argv[++i]);
+            // Accepted for compatibility only: edge transitions are gated on the
+            // hard screen edge, so there is no tolerance band left to configure.
+            ++i;
+            fprintf(stderr, "Warning: --edge-threshold is deprecated and ignored\n");
             continue;
         }
         if (arg == "--log-level" && i + 1 < argc) {
@@ -658,7 +661,7 @@ LinuxInputRouterDaemon::printUsage(const char* argv0) const
         "  --uhid-name NAME       Base name for virtual keyboard/mouse\n"
         "  --screen-width N       Virtual local screen width (default 1920)\n"
         "  --screen-height N      Virtual local screen height (default 1080)\n"
-        "  --edge-threshold N     Edge trigger threshold in pixels (default 40)\n"
+        "  --edge-threshold N     Deprecated, ignored\n"
         "  --log-level LEVEL      ERROR|WARNING|NOTE|INFO|DEBUG|DEBUG1...\n"
         "  --debug-events         Verbose event logging\n"
         "  --cursor-position-server        Run local cursor position server\n"
@@ -894,7 +897,6 @@ LinuxInputRouterDaemon::start()
     routerConfig.m_uhidName = m_config.m_uhidName;
     routerConfig.m_screenWidth = m_config.m_screenWidth;
     routerConfig.m_screenHeight = m_config.m_screenHeight;
-    routerConfig.m_edgeThreshold = m_config.m_edgeThreshold;
     routerConfig.m_debugEvents = m_config.m_debugEvents;
     m_router.reset(new RouterCore(routerConfig, [this](bool exclusive) { setExclusiveRouting(exclusive); }));
 

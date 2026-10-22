@@ -52,10 +52,6 @@ public:
     };
 
     struct Config {
-        SInt32 m_leftThreshold;
-        SInt32 m_rightThreshold;
-        SInt32 m_topThreshold;
-        SInt32 m_bottomThreshold;
         SInt32 m_virtualMin;
         SInt32 m_virtualMax;
         SInt32 m_warpOffset;

@@ -22,6 +22,7 @@
 #include "barrier/ClientArgs.h"
 #include "barrier/Screen.h"
 #include "base/Log.h"
+#include "common/EtherwaverRuntimePaths.h"
 #include "platform/UhidServer.h"
 
 #include <algorithm>
@@ -64,17 +65,6 @@ std::string debugBoundsPidPath()
 #endif
 }
 
-std::string cursorPositionSocketPath()
-{
-#if defined(__linux__)
-    char buffer[128];
-    snprintf(buffer, sizeof(buffer), "/tmp/etherwaver-cursor-%ld.sock", static_cast<long>(getuid()));
-    return buffer;
-#else
-    return "";
-#endif
-}
-
 bool parseCursorServerResponse(const std::string& response, SInt32& x, SInt32& y)
 {
     if (response.size() < 5 || response.compare(0, 3, "OK ") != 0) {
@@ -101,7 +91,7 @@ bool parseCursorServerResponse(const std::string& response, SInt32& x, SInt32& y
 bool queryCursorPositionServer(SInt32& x, SInt32& y)
 {
 #if defined(__linux__)
-    const std::string socketPath = cursorPositionSocketPath();
+    const std::string socketPath = etherwaver::cursorPositionSocketPath();
     if (socketPath.empty()) {
         return false;
     }

@@ -58,7 +58,6 @@ public:
         std::string m_uhidName;
         int m_screenWidth;
         int m_screenHeight;
-        int m_edgeThreshold;
         bool m_debugEvents;
 
         Config();
@@ -108,7 +107,7 @@ private:
     const char* systemName(ActiveSystem system) const;
     void flushPendingRelative();
     void releaseLocalState();
-    void activateFailsafeUnlock();
+    void toggleFailsafeSuspend();
 
 private:
     Config m_config;

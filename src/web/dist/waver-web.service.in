@@ -1,0 +1,22 @@
+# systemd *user* unit: runs the web panel as the same user as the desktop
+# panel, so both edit the same configuration and share the control token.
+#   systemctl --user enable --now waver-web
+# For a computer without a graphical login also run: loginctl enable-linger <user>
+[Unit]
+Description=Etherwaver web panel
+Documentation=file://@CMAKE_INSTALL_PREFIX@/share/doc/etherwaver/web.ini.example
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=@CMAKE_INSTALL_PREFIX@/bin/waver-web serve
+# graceful stop: closes live streams, finishes jobs, stops a managed process
+KillSignal=SIGTERM
+TimeoutStopSec=20
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,38 @@
+# Etherwaver web panel configuration.
+# Copy to ~/.config/etherwaver/web.ini (or pass --config).  Every key can also
+# be set with an environment variable WAVER_WEB_<SECTION>_<KEY>, e.g.
+# WAVER_WEB_WEB_LISTEN=127.0.0.1:24880.  Package upgrades never touch this file.
+
+[web]
+# Address and port of the panel. Keep it on localhost and publish it through
+# a reverse proxy with HTTPS if other computers need access.
+listen = 127.0.0.1:24880
+# URL prefix when served below a path by a reverse proxy, e.g. /etherwaver
+base_path =
+# Proxies whose X-Forwarded-For/-Proto/-Host headers are trusted (IPs or CIDRs)
+trusted_proxies =
+# auto: Secure cookies when the request arrived over HTTPS; always; never
+cookie_secure = auto
+# Extra origins allowed to send state-changing requests (normally not needed)
+allowed_origins =
+session_idle_minutes = 30
+session_max_hours = 12
+log_level = INFO
+
+[etherwaver]
+# Management endpoint of wavers (--control-address)
+control_address = 127.0.0.1:24803
+# Defaults follow the desktop panel:
+#   control_token_file = ~/.local/share/etherwaver/control-token
+#   settings_file      = ~/.config/Debauchee/EtherWaver.conf
+#   profile_dir        = ~/.local/share/etherwaver
+request_timeout = 5
+
+[service]
+# true: the web panel may start/stop wavers or waverc itself (headless use).
+# Leave false when the desktop panel or a system service manages Etherwaver.
+manage = false
+# directory with wavers/waverc (default: PATH)
+bin_dir =
+# X display for the managed process, e.g. :0
+display =

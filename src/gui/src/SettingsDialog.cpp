@@ -24,6 +24,7 @@
 #include "AppConfig.h"
 #include "SslCertificate.h"
 #include "MainWindow.h"
+#include "SharedConfigSync.h"
 
 #include <QtCore>
 #include <QtGui>
@@ -48,6 +49,8 @@ SettingsDialog::SettingsDialog(QWidget* parent, AppConfig& config) :
        m_appConfig(config)
 {
     setupUi(this);
+
+    m_OpenDigest = SharedConfigSync::digest(m_appConfig.settings(), QString());
 
     m_Locale.fillLanguageComboBox(m_pComboLanguage);
 
@@ -86,6 +89,13 @@ SettingsDialog::SettingsDialog(QWidget* parent, AppConfig& config) :
 
 void SettingsDialog::accept()
 {
+    if (SharedConfigSync::digest(m_appConfig.settings(), QString()) != m_OpenDigest &&
+        !SharedConfigSync::confirmOverwrite(this, tr("settings"))) {
+        m_appConfig.loadSettings();
+        QDialog::reject();
+        return;
+    }
+
     m_appConfig.setScreenName(m_pLineEditScreenName->text());
     m_appConfig.setPort(m_pSpinBoxPort->value());
     m_appConfig.setNetworkInterface(m_pLineEditInterface->text());

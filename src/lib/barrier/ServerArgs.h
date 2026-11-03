@@ -31,4 +31,6 @@ public:
     Config*                m_config;
     String                m_screenChangeScript;
     bool check_client_certificates = true;
+    String                m_controlAddress = "127.0.0.1:24803";
+    String                m_controlTokenFile;
 };

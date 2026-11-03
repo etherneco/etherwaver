@@ -1,0 +1,6 @@
+#!/bin/sh
+# Etherwaver web panel launcher (installed by CMake).
+WAVER_WEB_HOME="@CMAKE_INSTALL_PREFIX@/share/etherwaver/web"
+PYTHONPATH="$WAVER_WEB_HOME${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
+exec python3 -m waver_web "$@"

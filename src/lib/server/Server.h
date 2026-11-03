@@ -33,6 +33,7 @@
 #include "common/stdset.h"
 #include "common/stdvector.h"
 #include "core/layout/ScreenManager.h"
+#include "server/ControlServer.h"
 #include "platform/UhidEdgeTransitionService.h"
 
 #include <memory>
@@ -90,7 +91,7 @@ const etherwaver::layout::Screen* resolveObjectLayoutTargetForTest(
 /*!
 This class implements the top-level server algorithms for barrier.
 */
-class Server : public INode {
+class Server : public INode, public etherwaver::control::IRequestHandler {
 public:
     //! Lock cursor to screen data
     class LockCursorToScreenInfo {
@@ -602,4 +603,27 @@ private:
     EDirection          m_recentSwitchDirection;
 
     void                httpLoop();
+
+    // Etherwaver Control Protocol (see ControlServer.h)
+public:
+    void                postControlRequest(etherwaver::control::Request* request) override;
+    std::string         controlServerName() const override;
+
+private:
+    void                startControlServer();
+    void                stopControlServer();
+    void                handleControlRequestEvent(const Event&, void*);
+    void                executeControlRequest(const etherwaver::control::Request& request);
+    std::string         controlStatusJson() const;
+    std::string         controlLayoutJson() const;
+    std::string         controlActiveScreenName() const;
+    void                publishControlEvent(const std::string& event, const std::string& data);
+    void                publishActiveScreenIfChanged();
+
+    std::unique_ptr<etherwaver::control::ControlServer> m_controlServer;
+    etherwaver::control::ControlLogOutputter* m_controlLogOutputter = nullptr;
+    Event::Type         m_controlRequestEventType = Event::kUnknown;
+    std::string         m_lastPublishedActive;
+    std::string         m_lastPublishedActiveLayout;
+    double              m_startTime = 0.0;
 };

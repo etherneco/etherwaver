@@ -30,6 +30,7 @@
 #include "QUtility.h"
 #include "ProcessorArch.h"
 #include "SslCertificate.h"
+#include "SharedConfigSync.h"
 #include "ShutdownCh.h"
 #include "base/String.h"
 #include "common/DataDirectories.h"
@@ -47,6 +48,7 @@
 #include <QFileDialog>
 #include <QDesktopServices>
 #include <QDialog>
+#include <QFileSystemWatcher>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -542,8 +544,98 @@ MainWindow::MainWindow(QSettings& settings, AppConfig& appConfig) :
         }
     });
 
+    watchSharedConfig();
+
     // resize window to smallest reasonable size
     resize(0, 0);
+}
+
+void MainWindow::watchSharedConfig()
+{
+    m_KnownGeneralDigest = SharedConfigSync::digest(settings(), QString());
+    m_KnownServerDigest = SharedConfigSync::digest(settings(), SharedConfigSync::kServerGroup);
+
+    m_SharedConfigReloadTimer.setSingleShot(true);
+    m_SharedConfigReloadTimer.setInterval(300);
+    connect(&m_SharedConfigReloadTimer, SIGNAL(timeout()), this, SLOT(reloadSharedConfig()));
+
+    m_pSharedConfigWatcher = new QFileSystemWatcher(this);
+    const QString settingsFile = settings().fileName();
+    const QString stateFile = persistentGuiStatePath();
+    // writers replace the files atomically, so watch the directories too
+    QStringList paths;
+    paths << settingsFile << stateFile
+          << QFileInfo(settingsFile).absolutePath() << QFileInfo(stateFile).absolutePath();
+    for (const QString& path : paths) {
+        if (QFileInfo::exists(path)) {
+            m_pSharedConfigWatcher->addPath(path);
+        }
+    }
+    connect(m_pSharedConfigWatcher, SIGNAL(fileChanged(const QString&)),
+            this, SLOT(sharedConfigFileChanged(const QString&)));
+    connect(m_pSharedConfigWatcher, SIGNAL(directoryChanged(const QString&)),
+            this, SLOT(sharedConfigFileChanged(const QString&)));
+}
+
+void MainWindow::rememberSharedConfigState()
+{
+    // called after this panel saved: its own writes are not external changes
+    m_KnownGeneralDigest = SharedConfigSync::digest(settings(), QString());
+    m_KnownServerDigest = SharedConfigSync::digest(settings(), SharedConfigSync::kServerGroup);
+}
+
+void MainWindow::sharedConfigFileChanged(const QString&)
+{
+    // re-arm paths that were replaced by an atomic rename
+    const QStringList files = QStringList() << settings().fileName() << persistentGuiStatePath();
+    for (const QString& file : files) {
+        if (QFileInfo::exists(file) && !m_pSharedConfigWatcher->files().contains(file)) {
+            m_pSharedConfigWatcher->addPath(file);
+        }
+    }
+    m_SharedConfigReloadTimer.start();
+}
+
+void MainWindow::reloadSharedConfig()
+{
+    const QByteArray general = SharedConfigSync::digest(settings(), QString());
+    const QByteArray server = SharedConfigSync::digest(settings(), SharedConfigSync::kServerGroup);
+    const bool generalChanged = general != m_KnownGeneralDigest;
+    const bool serverChanged = server != m_KnownServerDigest;
+    m_KnownGeneralDigest = general;
+    m_KnownServerDigest = server;
+
+    if (!generalChanged && !serverChanged) {
+        // gui-state.ini only: mode / config file selection
+        loadSettings();
+        return;
+    }
+
+    if (generalChanged) {
+        appConfig().loadSettings();
+        m_pLabelScreenName->setText(getScreenName());
+        updateSSLFingerprint();
+    }
+    if (serverChanged) {
+        serverConfig().loadSettings();
+    }
+    loadSettings();
+
+    QStringList what;
+    if (generalChanged) {
+        what << "settings";
+    }
+    if (serverChanged) {
+        what << "server configuration";
+    }
+    const QString message =
+        QString("configuration changed by another panel (%1); reloaded").arg(what.join(", "));
+    qInfo("%s", qPrintable(message));
+    appendLogInfo(message);
+    if (barrierState() != barrierDisconnected && serverChanged) {
+        appendLogInfo("press Reload to restart with the new configuration, "
+                      "or apply it from the web panel");
+    }
 }
 
 MainWindow::~MainWindow()
@@ -721,6 +813,10 @@ void MainWindow::saveSettings()
     persistentSettings.setValue("groupClientChecked", m_pGroupClient->isChecked());
     persistentSettings.setValue("serverHostname", appConfig().serverHostname());
     persistentSettings.sync();
+
+    if (m_pSharedConfigWatcher != nullptr) {
+        rememberSharedConfigState();
+    }
 }
 
 void MainWindow::setIcon(qBarrierState state)
@@ -1513,6 +1609,7 @@ void MainWindow::on_m_pActionSettings_triggered()
 {
     if (SettingsDialog(this, appConfig()).exec() == QDialog::Accepted)
         updateSSLFingerprint();
+    rememberSharedConfigState();
 }
 
 void MainWindow::showDebugScreenInfo()
@@ -1753,6 +1850,7 @@ void MainWindow::autoAddScreen(const QString name)
             }
         }
         else {
+            rememberSharedConfigState();
             restartBarrier();
         }
     }
@@ -1763,6 +1861,7 @@ void MainWindow::showConfigureServer(const QString& message)
     ServerConfigDialog dlg(this, serverConfig(), appConfig().screenName());
     dlg.message(message);
     dlg.exec();
+    rememberSharedConfigState();
 }
 
 void MainWindow::on_m_pButtonConfigureServer_clicked()

@@ -347,6 +347,9 @@ void ServerConfig::loadSettings()
     settings().endArray();
     normalizeScreenNames(screens());
 
+    // loadSettings() is also used to reload after another panel changed
+    // the shared configuration, so start from an empty list
+    hotkeys().clear();
     int numHotkeys = settings().beginReadArray("hotkeys");
     for (int i = 0; i < numHotkeys; i++)
     {

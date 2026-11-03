@@ -198,6 +198,11 @@ ServerApp::help()
            << HELP_COMMON_INFO_1
            << "      --disable-client-cert-checking disable client SSL certificate \n"
               "                                     checking (deprecated)\n"
+           << "      --control-address <address>  local management endpoint used by\n"
+              "                             the web panel (default 127.0.0.1:24803,\n"
+              "                             \"none\" disables it).\n"
+           << "      --control-token-file <path>  token file for the management\n"
+              "                             endpoint (default <profile>/control-token).\n"
            << WINAPI_INFO << HELP_SYS_INFO << HELP_COMMON_INFO_2 << "\n"
            << "Default options are marked with a *\n"
            << "\n"

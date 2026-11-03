@@ -21,6 +21,7 @@
 #include "HotkeyDialog.h"
 #include "ActionDialog.h"
 #include "LayoutEditorWidget.h"
+#include "SharedConfigSync.h"
 
 #include <QtCore>
 #include <QtGui>
@@ -60,6 +61,9 @@ ServerConfigDialog::ServerConfigDialog(QWidget* parent, ServerConfig& config, co
     m_Message("")
 {
     setupUi(this);
+
+    // remember what was on disk so a concurrent edit (web panel) is detected
+    m_OpenDigest = SharedConfigSync::digest(m_OrigServerConfig.settings(), SharedConfigSync::kServerGroup);
 
     m_pCheckBoxHeartbeat->setChecked(serverConfig().hasHeartbeat());
     m_pSpinBoxHeartbeat->setValue(serverConfig().heartbeat());
@@ -153,6 +157,16 @@ void ServerConfigDialog::showEvent(QShowEvent* event)
 
 void ServerConfigDialog::accept()
 {
+    const QByteArray current =
+        SharedConfigSync::digest(m_OrigServerConfig.settings(), SharedConfigSync::kServerGroup);
+    if (current != m_OpenDigest &&
+        !SharedConfigSync::confirmOverwrite(this, tr("server configuration"))) {
+        // keep the newer configuration; MainWindow reloads it from disk
+        m_OrigServerConfig.loadSettings();
+        QDialog::reject();
+        return;
+    }
+
     serverConfig().haveHeartbeat(m_pCheckBoxHeartbeat->isChecked());
     serverConfig().setHeartbeat(m_pSpinBoxHeartbeat->value());
 

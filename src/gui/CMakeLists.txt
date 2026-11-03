@@ -49,6 +49,7 @@ set(GUI_SOURCE_FILES
     src/ServerConfig.cpp
     src/ServerConfigDialog.cpp
     src/SettingsDialog.cpp
+    src/SharedConfigSync.cpp
     src/SetupWizard.cpp
     src/SslCertificate.cpp
     src/TrashScreenWidget.cpp
@@ -90,6 +91,7 @@ set(GUI_HEADER_FILES
     src/ServerConfigDialog.h
     src/ServerConfig.h
     src/SettingsDialog.h
+    src/SharedConfigSync.h
     src/SetupWizard.h
     src/ShutdownCh.h
     src/SslCertificate.h

@@ -67,6 +67,13 @@ ArgParser::parseServerArgs(ServerArgs& args, int argc, const char* const* argv)
         }
         else if (isArg(i, argc, argv, nullptr, "--disable-client-cert-checking")) {
             args.check_client_certificates = false;
+        }
+        else if (isArg(i, argc, argv, nullptr, "--control-address", 1)) {
+            // management endpoint used by the web panel; "none" disables it
+            args.m_controlAddress = argv[++i];
+        }
+        else if (isArg(i, argc, argv, nullptr, "--control-token-file", 1)) {
+            args.m_controlTokenFile = argv[++i];
         } else {
             LOG((CLOG_PRINT "%s: unrecognized option `%s'" BYE, args.m_exename.c_str(), argv[i], args.m_exename.c_str()));
             return false;

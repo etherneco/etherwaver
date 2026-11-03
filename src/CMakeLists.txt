@@ -29,3 +29,7 @@ endif()
 if (BARRIER_BUILD_GUI)
     add_subdirectory(gui)
 endif()
+
+if (BARRIER_BUILD_WEB AND NOT WIN32)
+    add_subdirectory(web)
+endif()

@@ -10,8 +10,12 @@ Architecture: amd64
 Section: utils
 Priority: optional
 Depends: ${shlibs:Depends},
-         ${misc:Depends}
+         ${misc:Depends},
+         python3 (>= 3.9)
 Description: Keyboard and mouse sharing solution
  EtherWaver allows you to share one mouse and keyboard between multiple computers.
  Work seamlessly across Windows, macOS and Linux.
+ .
+ Includes waver-web, a browser-based management panel (systemd user unit
+ waver-web.service; listens on localhost only by default).
 Homepage: https://github.com/debauchee/etherwaver/

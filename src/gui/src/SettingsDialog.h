@@ -42,6 +42,7 @@ class SettingsDialog : public QDialog, public Ui::SettingsDialogBase
     private:
         AppConfig& m_appConfig;
         BarrierLocale m_Locale;
+        QByteArray m_OpenDigest;
 
     private slots:
         void on_m_pComboLanguage_currentIndexChanged(int index);

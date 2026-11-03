@@ -40,6 +40,11 @@
 #include "net/XSocket.h"
 #include "mt/Thread.h"
 #include "arch/Arch.h"
+#include "common/DataDirectories.h"
+#include "common/Version.h"
+#if SYSAPI_UNIX
+#include <unistd.h>
+#endif
 #include "base/IEventQueue.h"
 #include "base/Log.h"
 #include "base/TMethodEventJob.h"
@@ -1035,7 +1040,17 @@ Server::Server(
 
     } catch (XBase& e) {
         LOG((CLOG_ERR "Failed to start HTTP endpoint: %s", e.what()));
+    } catch (std::exception& e) {
+        // e.g. port 24802 already used by another instance: keep running
+        // without the legacy endpoint instead of aborting the server
+        LOG((CLOG_ERR "Failed to start HTTP endpoint: %s", e.what()));
+        if (m_httpListener != NULL) {
+            ARCH->closeSocket(m_httpListener);
+            m_httpListener = NULL;
+        }
     }
+
+    startControlServer();
 
 
 }
@@ -1091,6 +1106,8 @@ Server::~Server()
 	// disable and disconnect primary client
 	m_primaryClient->disable();
 	removeClient(m_primaryClient);
+
+    stopControlServer();
 
     if (m_httpListener) {
         m_running = false;
@@ -1355,6 +1372,9 @@ Server::adoptClient(BaseClientProxy* client)
 	// name must resolve to a configured screen or a known object-layout host
 	if (clientName.empty()) {
 		LOG((CLOG_WARN "unrecognised client name \"%s\", check server config", client->getName().c_str()));
+		publishControlEvent("client.rejected", "{\"name\":" +
+			etherwaver::control::jsonString(client->getName()) +
+			",\"reason\":\"unknown_screen\"}");
 		closeClient(client, kMsgEUnknown);
 		return;
 	}
@@ -1363,6 +1383,9 @@ Server::adoptClient(BaseClientProxy* client)
 	if (!addClient(client)) {
 		// can only have one screen with a given name at any given time
 		LOG((CLOG_WARN "a client with name \"%s\" is already connected", clientName.c_str()));
+		publishControlEvent("client.rejected", "{\"name\":" +
+			etherwaver::control::jsonString(clientName) +
+			",\"reason\":\"already_connected\"}");
 		closeClient(client, kMsgEBusy);
 		return;
 	}
@@ -1689,6 +1712,7 @@ Server::reloadScreenLayout()
     }
 
     refreshPrimaryUhidGeometry();
+    publishActiveScreenIfChanged();
 }
 
 bool
@@ -2320,6 +2344,7 @@ Server::switchScreen(BaseClientProxy* dst,
 		Server::SwitchToScreenInfo* info =
 			Server::SwitchToScreenInfo::alloc(m_active->getName());
 		m_events->addEvent(Event(m_events->forServer().screenSwitched(), this, info));
+		publishActiveScreenIfChanged();
 	}
 	else {
 		const bool logicalScreenChanged =
@@ -2336,6 +2361,8 @@ Server::switchScreen(BaseClientProxy* dst,
 			m_currentHost = (screen != NULL) ? layoutScreenDisplayName(*screen) : dst->getName();
 			m_current_ip.clear();
 		}
+
+		publishActiveScreenIfChanged();
 
 		// A same-client object-layout switch still changes the physical monitor.
 		// Wayland/UHID clients use enter() to refresh the active monitor bounds;
@@ -3489,6 +3516,8 @@ Server::handleLockCursorToScreenEvent(const Event& event, void*)
 	if (newState != m_lockedToScreen) {
 		m_lockedToScreen = newState;
 		LOG((CLOG_NOTE "cursor %s current screen", m_lockedToScreen ? "locked to" : "unlocked from"));
+		publishControlEvent("cursor.lock", std::string("{\"locked\":") +
+			(m_lockedToScreen ? "true" : "false") + "}");
 
 		m_primaryClient->reconfigure(getActivePrimarySides());
 		if (!isLockedToScreenServer()) {
@@ -4353,6 +4382,9 @@ Server::addClient(BaseClientProxy* client)
 	m_clientSet.insert(client);
 	m_clients.insert(std::make_pair(name, client));
 
+	publishControlEvent("client.connected", "{\"name\":" +
+		etherwaver::control::jsonString(name) + "}");
+
 	// initialize client data
 	SInt32 x, y;
 	client->getCursorPos(x, y);
@@ -4383,9 +4415,12 @@ Server::removeClient(BaseClientProxy* client)
 							client->getEventTarget());
 
 	// remove from list
-	m_clients.erase(getName(client));
+	const std::string removedName = getName(client);
+	m_clients.erase(removedName);
 	m_clientSet.erase(i);
 	reloadScreenLayout();
+	publishControlEvent("client.disconnected", "{\"name\":" +
+		etherwaver::control::jsonString(removedName) + "}");
 
 	return true;
 }
@@ -4516,6 +4551,7 @@ Server::forceLeaveClient(BaseClientProxy* client)
 		Server::SwitchToScreenInfo* info =
 			Server::SwitchToScreenInfo::alloc(m_active->getName());
 		m_events->addEvent(Event(m_events->forServer().screenSwitched(), this, info));
+		publishActiveScreenIfChanged();
 	}
 
 	// if this screen had the cursor when the screen saver activated
@@ -4858,4 +4894,378 @@ void Server::httpLoop()
 
         ARCH->closeSocket(socket);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Etherwaver Control Protocol
+// ---------------------------------------------------------------------------
+
+std::string
+Server::controlServerName() const
+{
+    return m_primaryClient != NULL ? m_primaryClient->getName() : std::string();
+}
+
+void
+Server::startControlServer()
+{
+    const std::string address = m_args.m_controlAddress;
+    if (address.empty() || address == "none" || address == "off") {
+        LOG((CLOG_NOTE "control: management endpoint disabled"));
+        return;
+    }
+
+    std::string tokenFile = m_args.m_controlTokenFile;
+    if (tokenFile.empty()) {
+        tokenFile = (barrier::DataDirectories::profile() / "control-token").u8string();
+    }
+
+    m_events->registerTypeOnce(m_controlRequestEventType, "Server::controlRequest");
+    m_events->adoptHandler(m_controlRequestEventType, this,
+                           new TMethodEventJob<Server>(this, &Server::handleControlRequestEvent));
+
+    m_startTime = ARCH->time();
+    m_controlServer.reset(new etherwaver::control::ControlServer(this, address, tokenFile));
+    if (!m_controlServer->start()) {
+        m_controlServer.reset();
+        m_events->removeHandler(m_controlRequestEventType, this);
+        return;
+    }
+
+    m_controlLogOutputter = new etherwaver::control::ControlLogOutputter(m_controlServer.get());
+    CLOG->insert(m_controlLogOutputter);
+}
+
+void
+Server::stopControlServer()
+{
+    if (m_controlLogOutputter != nullptr) {
+        m_controlLogOutputter->detach();
+        CLOG->remove(m_controlLogOutputter);
+        delete m_controlLogOutputter;
+        m_controlLogOutputter = nullptr;
+    }
+    if (m_controlServer) {
+        m_controlServer->publish("server.stopping", "{}");
+        // give the I/O thread a moment to flush the notification
+        ARCH->sleep(0.05);
+        m_controlServer->stop();
+        m_controlServer.reset();
+        m_events->removeHandler(m_controlRequestEventType, this);
+    }
+}
+
+void
+Server::postControlRequest(etherwaver::control::Request* request)
+{
+    // called on the control I/O thread; hand over to the main event loop
+    m_events->addEvent(Event(m_controlRequestEventType, this, request, Event::kDontFreeData));
+}
+
+void
+Server::handleControlRequestEvent(const Event& event, void*)
+{
+    std::unique_ptr<etherwaver::control::Request> request(
+        static_cast<etherwaver::control::Request*>(event.getData()));
+    if (!request || !m_controlServer) {
+        return;
+    }
+    try {
+        executeControlRequest(*request);
+    }
+    catch (std::exception& e) {
+        m_controlServer->respondError(*request, "internal", e.what());
+    }
+    catch (...) {
+        m_controlServer->respondError(*request, "internal", "unexpected error");
+    }
+}
+
+void
+Server::publishControlEvent(const std::string& event, const std::string& data)
+{
+    if (m_controlServer) {
+        m_controlServer->publish(event, data);
+    }
+}
+
+std::string
+Server::controlActiveScreenName() const
+{
+    if (usingObjectLayout()) {
+        const etherwaver::layout::Screen* screen = m_screenLayout.getScreen(m_activeLayoutScreenId);
+        if (screen != NULL) {
+            return layoutScreenDisplayName(*screen);
+        }
+    }
+    return m_active != NULL ? getName(m_active) : std::string();
+}
+
+void
+Server::publishActiveScreenIfChanged()
+{
+    if (!m_controlServer || m_active == NULL) {
+        return;
+    }
+    const std::string client = getName(m_active);
+    const std::string screen = controlActiveScreenName();
+    if (client == m_lastPublishedActive && screen == m_lastPublishedActiveLayout) {
+        return;
+    }
+    const std::string previous = m_lastPublishedActiveLayout;
+    m_lastPublishedActive = client;
+    m_lastPublishedActiveLayout = screen;
+    publishControlEvent("screen.active",
+        "{\"client\":" + etherwaver::control::jsonString(client) +
+        ",\"screen\":" + etherwaver::control::jsonString(screen) +
+        ",\"layoutId\":" + etherwaver::control::jsonString(m_activeLayoutScreenId) +
+        ",\"previous\":" + etherwaver::control::jsonString(previous) + "}");
+}
+
+std::string
+Server::controlLayoutJson() const
+{
+    std::ostringstream out;
+    out << "[";
+    bool first = true;
+    const std::vector<etherwaver::layout::Screen>& screens = m_screenLayout.getScreens();
+    for (std::vector<etherwaver::layout::Screen>::const_iterator it = screens.begin();
+         it != screens.end(); ++it) {
+        using etherwaver::control::jsonString;
+        if (!first) { out << ","; }
+        first = false;
+        out << "{\"id\":" << jsonString(it->m_id)
+            << ",\"host\":" << jsonString(it->m_hostId)
+            << ",\"name\":" << jsonString(it->m_name)
+            << ",\"x\":" << it->m_x << ",\"y\":" << it->m_y
+            << ",\"width\":" << it->m_width << ",\"height\":" << it->m_height
+            << ",\"links\":{\"left\":" << jsonString(it->m_leftLink)
+            << ",\"right\":" << jsonString(it->m_rightLink)
+            << ",\"up\":" << jsonString(it->m_topLink)
+            << ",\"down\":" << jsonString(it->m_bottomLink) << "}}";
+    }
+    out << "]";
+    return out.str();
+}
+
+std::string
+Server::controlStatusJson() const
+{
+    using etherwaver::control::jsonString;
+    std::ostringstream out;
+#if SYSAPI_WIN32
+    const long pid = static_cast<long>(GetCurrentProcessId());
+#else
+    const long pid = static_cast<long>(getpid());
+#endif
+    out << "{\"server\":" << jsonString(controlServerName())
+        << ",\"version\":" << jsonString(kVersion)
+        << ",\"pid\":" << pid
+        << ",\"uptimeSeconds\":" << static_cast<long long>(ARCH->time() - m_startTime)
+        << ",\"listenAddress\":" << jsonString(m_args.m_barrierAddress)
+        << ",\"configFile\":" << jsonString(m_args.m_configFile)
+        << ",\"layoutFile\":" << jsonString(getLayoutPath())
+        << ",\"objectLayout\":" << (usingObjectLayout() ? "true" : "false")
+        << ",\"lockedToScreen\":" << (m_lockedToScreen ? "true" : "false")
+        << ",\"clipboardSharing\":" << (m_enableClipboard ? "true" : "false")
+        << ",\"active\":{\"client\":" << jsonString(m_active != NULL ? getName(m_active) : std::string())
+        << ",\"screen\":" << jsonString(controlActiveScreenName())
+        << ",\"layoutId\":" << jsonString(m_activeLayoutScreenId) << "}";
+
+    out << ",\"clients\":[";
+    bool first = true;
+    for (ClientList::const_iterator it = m_clients.begin(); it != m_clients.end(); ++it) {
+        SInt32 x = 0, y = 0, w = 0, h = 0;
+        it->second->getShape(x, y, w, h);
+        if (!first) { out << ","; }
+        first = false;
+        out << "{\"name\":" << jsonString(it->first)
+            << ",\"primary\":" << (it->second == m_primaryClient ? "true" : "false")
+            << ",\"active\":" << (it->second == m_active ? "true" : "false")
+            << ",\"shape\":{\"x\":" << x << ",\"y\":" << y << ",\"width\":" << w
+            << ",\"height\":" << h << "}}";
+    }
+    out << "]";
+
+    out << ",\"configuredScreens\":[";
+    first = true;
+    if (m_config != NULL) {
+        for (Config::const_iterator it = m_config->begin(); it != m_config->end(); ++it) {
+            if (!first) { out << ","; }
+            first = false;
+            out << jsonString(*it);
+        }
+    }
+    out << "]";
+    out << ",\"layout\":" << controlLayoutJson();
+    out << "}";
+    return out.str();
+}
+
+void
+Server::executeControlRequest(const etherwaver::control::Request& request)
+{
+    using etherwaver::control::JsonValue;
+    using etherwaver::control::jsonString;
+
+    const std::string& cmd = request.m_command;
+    auto stringParam = [&request](const char* name, bool& present) -> std::string {
+        auto it = request.m_params.find(name);
+        present = (it != request.m_params.end() && it->second.m_type == JsonValue::kString);
+        return present ? it->second.m_string : std::string();
+    };
+
+    if (cmd == "status") {
+        m_controlServer->respond(request, controlStatusJson());
+        return;
+    }
+
+    if (cmd == "layout") {
+        m_controlServer->respond(request, "{\"screens\":" + controlLayoutJson() + "}");
+        return;
+    }
+
+    if (cmd == "config.get") {
+        std::ostringstream config;
+        config << *m_config;
+        std::string layout;
+        {
+            std::ifstream in(getLayoutPath().c_str(), std::ios::binary);
+            if (in.good()) {
+                std::ostringstream buffer;
+                buffer << in.rdbuf();
+                layout = buffer.str();
+            }
+        }
+        m_controlServer->respond(request,
+            "{\"config\":" + jsonString(config.str()) +
+            ",\"layout\":" + jsonString(layout) +
+            ",\"configFile\":" + jsonString(m_args.m_configFile) +
+            ",\"layoutFile\":" + jsonString(getLayoutPath()) + "}");
+        return;
+    }
+
+    if (cmd == "config.apply") {
+        bool hasConfig = false;
+        bool hasLayout = false;
+        const std::string text = stringParam("config", hasConfig);
+        const std::string layout = stringParam("layout", hasLayout);
+        bool persist = true;
+        {
+            auto it = request.m_params.find("persist");
+            if (it != request.m_params.end() && it->second.m_type == JsonValue::kBool) {
+                persist = it->second.m_bool;
+            }
+        }
+        if (!hasConfig || text.empty()) {
+            m_controlServer->respondError(request, "bad_request", "\"config\" is required");
+            return;
+        }
+
+        Config validated(m_events);
+        try {
+            std::istringstream in(text);
+            in >> validated;
+        }
+        catch (XBase& e) {
+            m_controlServer->respondError(request, "invalid_config", e.what());
+            return;
+        }
+        catch (std::exception& e) {
+            m_controlServer->respondError(request, "invalid_config", e.what());
+            return;
+        }
+        if (!matchesScreenOrHostName(validated, m_primaryClient->getName())) {
+            m_controlServer->respondError(request, "missing_primary_screen",
+                "configuration does not contain this server's screen \"" +
+                m_primaryClient->getName() + "\"");
+            return;
+        }
+
+        bool persisted = false;
+        if (persist && !m_args.m_configFile.empty()) {
+            std::ofstream out(m_args.m_configFile.c_str(), std::ios::binary | std::ios::trunc);
+            out.write(text.data(), static_cast<std::streamsize>(text.size()));
+            out.close();
+            if (out.fail()) {
+                m_controlServer->respondError(request, "io_error",
+                    "cannot write " + m_args.m_configFile);
+                return;
+            }
+            if (hasLayout && !layout.empty()) {
+                std::ofstream lout(getLayoutPath().c_str(), std::ios::binary | std::ios::trunc);
+                lout.write(layout.data(), static_cast<std::streamsize>(layout.size()));
+                lout.close();
+                if (lout.fail()) {
+                    m_controlServer->respondError(request, "io_error",
+                        "cannot write " + getLayoutPath());
+                    return;
+                }
+            }
+            persisted = true;
+        }
+
+        std::istringstream apply(text);
+        apply >> *m_config;
+        if (!setConfig(*m_config)) {
+            m_controlServer->respondError(request, "rejected", "server rejected the configuration");
+            return;
+        }
+        LOG((CLOG_NOTE "control: configuration applied (persisted=%s)", persisted ? "yes" : "no"));
+        publishControlEvent("config.applied", std::string("{\"persisted\":") +
+                            (persisted ? "true" : "false") + "}");
+        m_controlServer->respond(request, std::string("{\"applied\":true,\"persisted\":") +
+                                 (persisted ? "true" : "false") + "}");
+        return;
+    }
+
+    if (cmd == "switch") {
+        bool present = false;
+        std::string screen = stringParam("screen", present);
+        if (!present || screen.empty() || screen.size() > 255) {
+            m_controlServer->respondError(request, "bad_request", "\"screen\" is required");
+            return;
+        }
+        const std::string canonical = m_config->getCanonicalName(screen);
+        const bool known = !canonical.empty() ||
+            (usingObjectLayout() && m_screenLayout.getScreenByIdOrName(screen) != NULL);
+        if (!canonical.empty()) {
+            screen = canonical;
+        }
+        if (!known) {
+            m_controlServer->respondError(request, "not_found", "unknown screen \"" + screen + "\"");
+            return;
+        }
+        if (!switchToScreenName(screen)) {
+            m_controlServer->respondError(request, "not_connected",
+                "screen \"" + screen + "\" is not connected");
+            return;
+        }
+        m_controlServer->respond(request,
+            "{\"active\":{\"client\":" + jsonString(getName(m_active)) +
+            ",\"screen\":" + jsonString(controlActiveScreenName()) + "}}");
+        return;
+    }
+
+    if (cmd == "lock") {
+        bool present = false;
+        const std::string mode = stringParam("mode", present);
+        LockCursorToScreenInfo::State state;
+        if (mode == "on") state = LockCursorToScreenInfo::kOn;
+        else if (mode == "off") state = LockCursorToScreenInfo::kOff;
+        else if (mode == "toggle") state = LockCursorToScreenInfo::kToggle;
+        else {
+            m_controlServer->respondError(request, "bad_request", "\"mode\" must be on, off or toggle");
+            return;
+        }
+        LockCursorToScreenInfo* info = LockCursorToScreenInfo::alloc(state);
+        handleLockCursorToScreenEvent(
+            Event(m_events->forServer().lockCursorToScreen(), this, info, Event::kDontFreeData), NULL);
+        free(info);
+        m_controlServer->respond(request, std::string("{\"locked\":") +
+                                 (m_lockedToScreen ? "true" : "false") + "}");
+        return;
+    }
+
+    m_controlServer->respondError(request, "unknown_command", "unknown command \"" + cmd + "\"");
 }

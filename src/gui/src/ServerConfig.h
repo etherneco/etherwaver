@@ -74,9 +74,9 @@ class ServerConfig : public BaseConfig
         bool saveLayout(const QString& configFileName) const;
         int numScreens() const;
         int autoAddScreen(const QString name);
+        QSettings& settings() { return *m_pSettings; }
 
     protected:
-        QSettings& settings() { return *m_pSettings; }
         std::vector<Screen>& screens() { return m_Screens; }
         void setScreens(const std::vector<Screen>& screens) { m_Screens = screens; }
         void addScreen(const Screen& screen) { m_Screens.push_back(screen); }

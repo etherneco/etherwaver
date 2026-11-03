@@ -38,6 +38,7 @@ ClientListener::ClientListener(const NetworkAddress& address,
                 IEventQueue* events,
                                ConnectionSecurityLevel security_level) :
     m_socketFactory(socketFactory),
+    m_listen(NULL),
     m_server(NULL),
     m_events(events),
     security_level_{security_level}

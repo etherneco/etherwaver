@@ -63,6 +63,7 @@ class ServerConfigDialog : public QDialog, public Ui::ServerConfigDialogBase
         ServerConfig m_ServerConfig;
         class LayoutEditorWidget* m_layoutEditor;
         QString m_Message;
+        QByteArray m_OpenDigest;
 };
 
 #endif

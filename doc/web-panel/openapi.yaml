@@ -1,0 +1,407 @@
+openapi: 3.0.3
+info:
+  title: Etherwaver web panel API
+  version: "1.0.0"
+  description: |
+    HTTP API of `waver-web`, the browser management panel of Etherwaver.
+
+    * All endpoints except `/healthz` and `/readyz` need a session cookie
+      (`ew_session`) obtained from `POST /api/v1/session`.
+    * Requests that change state (POST, PUT, PATCH, DELETE) must send the
+      `X-CSRF-Token` header returned at sign-in; a foreign `Origin` is refused.
+    * Configuration resources carry an `ETag`; updates must send it back in
+      `If-Match` (missing: 428, outdated: 412 with the current values).
+    * Every response has an `X-Request-Id` header (a client may supply its
+      own); errors repeat it in `error.requestId`.
+    * Long operations return `202` and a job; follow it with `GET /jobs/{id}`
+      or the `job.updated` live event.
+    * GET requests never change state.
+servers:
+  - url: http://127.0.0.1:24880
+security:
+  - session: []
+
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: ew_session
+  parameters:
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: ETag of the version the client edited.
+      schema: { type: string }
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema: { type: string }
+  responses:
+    Error:
+      description: Error (see `Error` schema; status codes below)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthenticated: { description: "401 unauthenticated - sign in required", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Forbidden: { description: "403 forbidden (role), csrf_failed or bad_origin", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    NotFound: { description: "404 not_found", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Conflict: { description: "409 state conflict (device_not_connected, not_managed, external_owner, job_running, last_admin, in_use)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    PreconditionFailed: { description: "412 conflict - the resource changed; error.details.current and error.details.etag hold the newer version", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    PreconditionRequired: { description: "428 precondition_required - If-Match missing", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Validation: { description: "422 validation_failed - error.details is a list of {field, message}", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    BackendUnavailable: { description: "503 backend_unavailable / backend_busy / config_locked (Retry-After header)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    BackendTimeout: { description: "504 backend_timeout (read, nothing changed) or outcome_unknown (change sent, not confirmed - re-read the state)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code: { type: string, example: conflict }
+            message: { type: string }
+            requestId: { type: string }
+            details: {}
+    Session:
+      type: object
+      properties:
+        user: { type: string }
+        role: { type: string, enum: [viewer, operator, admin] }
+        permissions: { type: array, items: { type: string } }
+        csrfToken: { type: string }
+        expiresAt: { type: number, description: Unix time }
+        idleTimeout: { type: number }
+    Job:
+      type: object
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [config.apply, service.start, service.stop, service.restart] }
+        state: { type: string, enum: [queued, running, succeeded, failed, uncertain, cancelled] }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        message: { type: string }
+        result: {}
+        error: { type: object, nullable: true, properties: { code: { type: string }, message: { type: string } } }
+        user: { type: string }
+        created: { type: number }
+        finished: { type: number, nullable: true }
+    General:
+      type: object
+      description: Settings shared with the desktop panel (AppConfig / MainWindow).
+      properties:
+        mode: { type: string, enum: [server, client] }
+        screenName: { type: string, maxLength: 255 }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        interface: { type: string }
+        serverHostname: { type: string }
+        autoConfig: { type: boolean, description: Bonjour discovery (desktop panel only) }
+        configSource: { type: string, enum: [internal, external] }
+        externalConfigFile: { type: string }
+        cryptoEnabled: { type: boolean }
+        requireClientCertificate: { type: boolean }
+        logLevel: { type: string, enum: [ERROR, WARNING, NOTE, INFO, DEBUG, DEBUG1, DEBUG2] }
+        logToFile: { type: boolean }
+        logFilename: { type: string }
+        uhidEnabled: { type: boolean, description: Linux only }
+        uhidName: { type: string }
+        language: { type: string, description: desktop panel language }
+        autoHide: { type: boolean }
+        autoStart: { type: boolean }
+        minimizeToTray: { type: boolean }
+        elevateMode: { type: string, enum: [as_needed, always, never], description: Windows only }
+    KeySequence:
+      type: object
+      properties:
+        keys: { type: array, maxItems: 4, items: { type: string }, example: [Control, Alt, Right] }
+        mouse: { type: boolean, description: "keys is a single mouse button 1-4" }
+    Action:
+      allOf:
+        - $ref: "#/components/schemas/KeySequence"
+        - type: object
+          properties:
+            type: { type: string, enum: [keystroke, keyDown, keyUp, switchToScreen, toggleScreen, switchInDirection, lockCursorToScreen] }
+            screens: { type: array, items: { type: string }, description: "targets of key actions; empty = all" }
+            screen: { type: string }
+            direction: { type: string, enum: [left, right, up, down] }
+            lockMode: { type: string, enum: [toggle, on, off] }
+            activeOnRelease: { type: boolean }
+    Screen:
+      type: object
+      properties:
+        name: { type: string, description: "a -N suffix is added when missing" }
+        aliases: { type: array, items: { type: string } }
+        x: { type: integer }
+        y: { type: integer }
+        width: { type: integer }
+        height: { type: integer }
+        links: { type: object, properties: { left: { type: string }, right: { type: string }, up: { type: string }, down: { type: string } } }
+        modifiers: { type: object, additionalProperties: { type: string, enum: [shift, ctrl, alt, meta, super, none] } }
+        switchCorners: { type: object, additionalProperties: { type: boolean } }
+        switchCornerSize: { type: integer }
+        fixes: { type: object, additionalProperties: { type: boolean } }
+    Layout:
+      type: object
+      description: Server configuration shared with the desktop panel (ServerConfig).
+      properties:
+        grid: { type: object, properties: { columns: { type: integer }, rows: { type: integer } } }
+        options:
+          type: object
+          properties:
+            heartbeat: { type: object, properties: { enabled: { type: boolean }, ms: { type: integer } } }
+            switchDelay: { type: object, properties: { enabled: { type: boolean }, ms: { type: integer } } }
+            switchDoubleTap: { type: object, properties: { enabled: { type: boolean }, ms: { type: integer } } }
+            switchCorners: { type: object, additionalProperties: { type: boolean } }
+            switchCornerSize: { type: integer }
+            relativeMouseMoves: { type: boolean }
+            screenSaverSync: { type: boolean }
+            win32KeepForeground: { type: boolean }
+            ignoreAutoConfigClient: { type: boolean }
+            enableDragAndDrop: { type: boolean }
+            clipboardSharing: { type: boolean }
+            useCustomLinks: { type: boolean }
+        screens: { type: array, items: { $ref: "#/components/schemas/Screen" } }
+        hotkeys:
+          type: array
+          items:
+            allOf:
+              - $ref: "#/components/schemas/KeySequence"
+              - type: object
+                properties:
+                  actions: { type: array, items: { $ref: "#/components/schemas/Action" } }
+    Device:
+      type: object
+      properties:
+        name: { type: string }
+        host: { type: string }
+        aliases: { type: array, items: { type: string } }
+        configured: { type: boolean }
+        isServer: { type: boolean }
+        connected: { type: boolean, nullable: true, description: "null = unknown (server not reachable)" }
+        active: { type: boolean, nullable: true }
+        rejected: { type: object, nullable: true }
+        connectedAt: { type: number, nullable: true }
+        lastActivity: { type: number, nullable: true }
+        lastDisconnect: { type: number, nullable: true }
+        shape: { type: object, nullable: true }
+
+paths:
+  /healthz:
+    get:
+      summary: Liveness of the web panel process
+      security: []
+      responses: { "200": { description: ok } }
+  /readyz:
+    get:
+      summary: Readiness - 200 when connected to the Etherwaver server, otherwise 503
+      security: []
+      responses: { "200": { description: ready }, "503": { description: not connected } }
+
+  /api/v1/session:
+    get:
+      summary: Current session (and CSRF token)
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    post:
+      summary: Sign in
+      security: []
+      requestBody:
+        content: { application/json: { schema: { type: object, required: [username, password], properties: { username: { type: string }, password: { type: string } } } } }
+      responses:
+        "201": { description: signed in; sets the session cookie (HttpOnly, SameSite=Strict, Secure over HTTPS), content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } } }
+        "401": { description: invalid_credentials }
+        "429": { description: too_many_attempts }
+    delete:
+      summary: Sign out
+      parameters: [{ $ref: "#/components/parameters/CsrfToken" }]
+      responses: { "204": { description: signed out } }
+  /api/v1/session/password:
+    post:
+      summary: Change own password
+      parameters: [{ $ref: "#/components/parameters/CsrfToken" }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { currentPassword: { type: string }, newPassword: { type: string, minLength: 10 } } } } } }
+      responses: { "204": { description: changed }, "422": { $ref: "#/components/responses/Validation" } }
+
+  /api/v1/meta:
+    get:
+      summary: Versions, platform, capabilities and enumerations
+      responses: { "200": { description: ok } }
+  /api/v1/status:
+    get:
+      summary: Connection to the server, live server status, managed service
+      description: When the server is not connected `server` is null, `stale` is true and `lastKnownServer` holds the last status (never to be shown as current).
+      responses: { "200": { description: ok } }
+  /api/v1/devices:
+    get:
+      summary: Devices (configured screens, connected and refused clients)
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: state, in: query, schema: { type: string, enum: [connected, disconnected, unconfigured] } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { type: object, properties: { devices: { type: array, items: { $ref: "#/components/schemas/Device" } }, stale: { type: boolean } } } } } }
+  /api/v1/devices/{name}:
+    get:
+      summary: One device with its configuration
+      parameters: [{ name: name, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok }, "404": { $ref: "#/components/responses/NotFound" } }
+  /api/v1/devices/{name}/activate:
+    post:
+      summary: Give keyboard and mouse control to this screen (operator)
+      parameters: [{ name: name, in: path, required: true, schema: { type: string } }, { $ref: "#/components/parameters/CsrfToken" }]
+      responses:
+        "200": { description: switched (confirmed by the server) }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/BackendUnavailable" }
+        "504": { $ref: "#/components/responses/BackendTimeout" }
+  /api/v1/sessions:
+    get:
+      summary: Keyboard/mouse session (controlled screen, lock, connected clients); web sessions for admins
+      responses: { "200": { description: ok } }
+  /api/v1/control/lock:
+    post:
+      summary: Lock or release the cursor on the current screen (operator)
+      parameters: [{ $ref: "#/components/parameters/CsrfToken" }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { mode: { type: string, enum: [on, off, toggle] } } } } } }
+      responses: { "200": { description: "{locked: bool}" }, "503": { $ref: "#/components/responses/BackendUnavailable" }, "504": { $ref: "#/components/responses/BackendTimeout" } }
+
+  /api/v1/config/general:
+    get:
+      summary: General settings (ETag)
+      responses: { "200": { description: ok, headers: { ETag: { schema: { type: string } } } } }
+    patch:
+      summary: Change general settings (admin)
+      parameters: [{ $ref: "#/components/parameters/IfMatch" }, { $ref: "#/components/parameters/CsrfToken" }]
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/General" } } } }
+      responses:
+        "200": { description: the accepted settings and new ETag }
+        "412": { $ref: "#/components/responses/PreconditionFailed" }
+        "422": { $ref: "#/components/responses/Validation" }
+        "428": { $ref: "#/components/responses/PreconditionRequired" }
+  /api/v1/config/layout:
+    get:
+      summary: Screens, links, options and hotkeys (ETag)
+      responses: { "200": { description: ok } }
+    put:
+      summary: Replace the layout (admin)
+      parameters: [{ $ref: "#/components/parameters/IfMatch" }, { $ref: "#/components/parameters/CsrfToken" }]
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/Layout" } } } }
+      responses:
+        "200": { description: the accepted layout and new ETag }
+        "412": { $ref: "#/components/responses/PreconditionFailed" }
+        "422": { $ref: "#/components/responses/Validation" }
+  /api/v1/config/layout/screens:
+    post:
+      summary: Add a screen (admin)
+      parameters: [{ $ref: "#/components/parameters/IfMatch" }, { $ref: "#/components/parameters/CsrfToken" }]
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/Screen" } } } }
+      responses: { "201": { description: created }, "412": { $ref: "#/components/responses/PreconditionFailed" }, "422": { $ref: "#/components/responses/Validation" } }
+  /api/v1/config/layout/screens/{name}:
+    delete:
+      summary: Remove a screen and links to it (admin)
+      parameters: [{ name: name, in: path, required: true, schema: { type: string } }, { $ref: "#/components/parameters/IfMatch" }, { $ref: "#/components/parameters/CsrfToken" }]
+      responses: { "200": { description: removed }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" } }
+  /api/v1/config/server-text:
+    get:
+      summary: The wavers .conf and layout file generated from the shared configuration
+      responses: { "200": { description: ok } }
+  /api/v1/config/export:
+    get:
+      summary: Download settings (json), server .conf (conf) or layout file (layout)
+      parameters: [{ name: format, in: query, schema: { type: string, enum: [json, conf, layout] } }]
+      responses: { "200": { description: attachment } }
+  /api/v1/config/import:
+    post:
+      summary: Import an export (admin); atomic, ETag-guarded
+      parameters: [{ $ref: "#/components/parameters/CsrfToken" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [format, version, general, layout, expectedEtags]
+              properties:
+                format: { type: string, enum: [etherwaver-settings] }
+                version: { type: integer, enum: [1] }
+                general: { $ref: "#/components/schemas/General" }
+                layout: { $ref: "#/components/schemas/Layout" }
+                includeScreenName: { type: boolean }
+                expectedEtags: { type: object, properties: { general: { type: string }, layout: { type: string } } }
+      responses: { "200": { description: imported }, "412": { $ref: "#/components/responses/PreconditionFailed" }, "422": { $ref: "#/components/responses/Validation" } }
+  /api/v1/config/apply:
+    post:
+      summary: Apply the saved configuration to the running server (operator) - job
+      parameters: [{ $ref: "#/components/parameters/CsrfToken" }]
+      responses: { "202": { description: job started, headers: { Location: { schema: { type: string } } } }, "409": { $ref: "#/components/responses/Conflict" } }
+  /api/v1/service/{action}:
+    post:
+      summary: Start, stop or restart the Etherwaver process managed by the web panel (operator) - job
+      parameters: [{ name: action, in: path, required: true, schema: { type: string, enum: [start, stop, restart] } }, { $ref: "#/components/parameters/CsrfToken" }]
+      responses: { "202": { description: job started }, "409": { description: "not_managed (disabled in web.ini) / job_running" } }
+  /api/v1/jobs:
+    get: { summary: Recent jobs, responses: { "200": { description: ok } } }
+  /api/v1/jobs/{id}:
+    get:
+      summary: One job
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: ok, content: { application/json: { schema: { type: object, properties: { job: { $ref: "#/components/schemas/Job" } } } } } }, "404": { $ref: "#/components/responses/NotFound" } }
+
+  /api/v1/security/fingerprints:
+    get: { summary: Local, trusted and pending certificate fingerprints, responses: { "200": { description: ok } } }
+  /api/v1/security/fingerprints/{kind}:
+    post:
+      summary: Trust a SHA-256 fingerprint (admin)
+      parameters: [{ name: kind, in: path, required: true, schema: { type: string, enum: [clients, servers] } }, { $ref: "#/components/parameters/CsrfToken" }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { sha256: { type: string } } } } } }
+      responses: { "201": { description: added }, "200": { description: already trusted }, "422": { $ref: "#/components/responses/Validation" } }
+  /api/v1/security/fingerprints/{kind}/{sha256}:
+    delete:
+      summary: Revoke trust (admin)
+      parameters: [{ name: kind, in: path, required: true, schema: { type: string } }, { name: sha256, in: path, required: true, schema: { type: string } }, { $ref: "#/components/parameters/CsrfToken" }]
+      responses: { "204": { description: removed }, "404": { $ref: "#/components/responses/NotFound" } }
+
+  /api/v1/logs:
+    get:
+      summary: Recent log lines of the server and of managed processes (operator)
+      parameters: [{ name: limit, in: query, schema: { type: integer } }, { name: level, in: query, schema: { type: string } }, { name: q, in: query, schema: { type: string } }]
+      responses: { "200": { description: ok } }
+  /api/v1/diagnostics:
+    get: { summary: Control connection statistics, files, runtime layout, UHID status (operator), responses: { "200": { description: ok } } }
+  /api/v1/audit:
+    get:
+      summary: Audit log (admin) - who, when, resource, result; no secrets
+      parameters: [{ name: limit, in: query, schema: { type: integer } }, { name: user, in: query, schema: { type: string } }, { name: action, in: query, schema: { type: string } }]
+      responses: { "200": { description: ok } }
+  /api/v1/users:
+    get: { summary: Web panel accounts (admin), responses: { "200": { description: ok } } }
+    post:
+      summary: Create an account (admin)
+      parameters: [{ $ref: "#/components/parameters/CsrfToken" }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { username: { type: string }, password: { type: string }, role: { type: string } } } } } }
+      responses: { "201": { description: created }, "409": { description: exists }, "422": { $ref: "#/components/responses/Validation" } }
+  /api/v1/users/{username}:
+    patch:
+      summary: Change role, disable/enable or reset the password (admin)
+      parameters: [{ name: username, in: path, required: true, schema: { type: string } }, { $ref: "#/components/parameters/CsrfToken" }]
+      responses: { "200": { description: updated }, "409": { description: last_admin } }
+    delete:
+      summary: Delete an account (admin)
+      parameters: [{ name: username, in: path, required: true, schema: { type: string } }, { $ref: "#/components/parameters/CsrfToken" }]
+      responses: { "204": { description: deleted }, "409": { description: last_admin } }
+  /api/v1/events:
+    get:
+      summary: Live updates (Server-Sent Events)
+      description: |
+        Event ids are `<epoch>-<seq>`. Reconnecting with `Last-Event-ID`
+        replays missed events; when that is impossible (backend restarted,
+        gap, overflow) a `resync` event tells the client to reload all
+        state. Events: hello, resync, server.status, server.event,
+        backend.state, service.state, config.changed, job.updated, log
+        (operator), security.pending, security.changed, session.expired.
+        Comment lines are sent every 15 s as keep-alive.
+      parameters: [{ name: Last-Event-ID, in: header, schema: { type: string } }]
+      responses: { "200": { description: text/event-stream } }

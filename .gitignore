@@ -36,3 +36,7 @@ CMakeCache.txt
 /out/build/x64-Debug
 debug.logs.txt
 logs.txt
+
+# web panel build output
+src/web/waver_web/static/
+__pycache__/

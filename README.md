@@ -72,7 +72,29 @@ Use cases:
 -   DevOps workflows
 -   Remote orchestration
 
-Authentication and token-based access control (planned).
+The legacy endpoint above is kept for existing scripts. New tools should use
+the authenticated **Etherwaver Control Protocol** on `127.0.0.1:24803`
+(token in `~/.local/share/etherwaver/control-token`, request ids, live
+events) - see [doc/web-panel/control-protocol.md](doc/web-panel/control-protocol.md).
+
+------------------------------------------------------------------------
+
+## Web panel
+
+`waver-web` manages Etherwaver from a browser to the same extent as the
+desktop panel: settings, screens and layout, hotkeys, trusted certificates,
+switching control, live status, logs and diagnostics - with accounts, roles,
+CSRF protection and an audit log. Both panels edit the same configuration
+and detect each other's changes.
+
+``` bash
+waver-web user add alice --role admin
+systemctl --user enable --now waver-web    # then open http://127.0.0.1:24880/
+```
+
+Details: [doc/web-panel/README.md](doc/web-panel/README.md) (install,
+reverse proxy, security, tests), [feature coverage](doc/web-panel/coverage.md),
+[OpenAPI](doc/web-panel/openapi.yaml).
 
 ------------------------------------------------------------------------
 
@@ -118,7 +140,8 @@ make
 
 -   [ ] Stable UHID backend
 -   [ ] Wayland-native backend
--   [ ] Token-based API authentication
+-   [x] Token-based API authentication (control protocol)
+-   [x] Web management panel
 -   [ ] Remote configuration mode
 -   [ ] Plugin-based backend loading
 -   [ ] Binary renaming to `waver`

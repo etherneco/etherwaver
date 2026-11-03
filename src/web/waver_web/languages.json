@@ -1,0 +1,174 @@
+[
+ {
+  "code": "en",
+  "name": "English"
+ },
+ {
+  "code": "ca-AD",
+  "name": "Català (Andorra)"
+ },
+ {
+  "code": "cs-CZ",
+  "name": "Čeština"
+ },
+ {
+  "code": "cy",
+  "name": "Cymraeg"
+ },
+ {
+  "code": "da",
+  "name": "Dansk"
+ },
+ {
+  "code": "de",
+  "name": "Deutsch"
+ },
+ {
+  "code": "es",
+  "name": "Español"
+ },
+ {
+  "code": "fr",
+  "name": "Français"
+ },
+ {
+  "code": "hr-HR",
+  "name": "Hrvatski"
+ },
+ {
+  "code": "id",
+  "name": "Indonesia"
+ },
+ {
+  "code": "it",
+  "name": "Italiano"
+ },
+ {
+  "code": "lv",
+  "name": "Latvijas"
+ },
+ {
+  "code": "lt",
+  "name": "Lietuvos"
+ },
+ {
+  "code": "hu-HU",
+  "name": "Magyar"
+ },
+ {
+  "code": "nl-NL",
+  "name": "Nederlands"
+ },
+ {
+  "code": "no",
+  "name": "Norsk"
+ },
+ {
+  "code": "pl-PL",
+  "name": "Polski"
+ },
+ {
+  "code": "pt-PT",
+  "name": "Português"
+ },
+ {
+  "code": "pt-BR",
+  "name": "Português (Brasil)"
+ },
+ {
+  "code": "ro",
+  "name": "Română"
+ },
+ {
+  "code": "sq-AL",
+  "name": "Shqiptar"
+ },
+ {
+  "code": "sl-SI",
+  "name": "Slovenščina"
+ },
+ {
+  "code": "sk-SK",
+  "name": "Slovenčina"
+ },
+ {
+  "code": "fi",
+  "name": "Suomi"
+ },
+ {
+  "code": "sv",
+  "name": "Svenska"
+ },
+ {
+  "code": "vi",
+  "name": "Tiếng Việt"
+ },
+ {
+  "code": "tr-TR",
+  "name": "Türkçe"
+ },
+ {
+  "code": "bg-BG",
+  "name": "български"
+ },
+ {
+  "code": "ru",
+  "name": "Русский"
+ },
+ {
+  "code": "sr",
+  "name": "српски"
+ },
+ {
+  "code": "uk",
+  "name": "Український"
+ },
+ {
+  "code": "grk",
+  "name": "Ελληνικά"
+ },
+ {
+  "code": "he",
+  "name": "עברית"
+ },
+ {
+  "code": "ar",
+  "name": "العربية"
+ },
+ {
+  "code": "pes-IR",
+  "name": "فارسی"
+ },
+ {
+  "code": "ur",
+  "name": "اردو"
+ },
+ {
+  "code": "mr",
+  "name": "मराठी"
+ },
+ {
+  "code": "si",
+  "name": "Sඉන්හල"
+ },
+ {
+  "code": "th-TH",
+  "name": "ภาษาไทย"
+ },
+ {
+  "code": "zh-CN",
+  "name": "中文 (简体)"
+ },
+ {
+  "code": "zh-TW",
+  "name": "中文 (繁體)"
+ },
+ {
+  "code": "ja-JP",
+  "name": "日本語"
+ },
+ {
+  "code": "ko",
+  "name": "한국어"
+ }
+]

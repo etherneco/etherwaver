@@ -1,0 +1,1 @@
+Fixed a server crash when the listen socket cannot be created (e.g. --address :PORT on hosts without IPv6) and made a busy legacy HTTP port (24802) non-fatal.

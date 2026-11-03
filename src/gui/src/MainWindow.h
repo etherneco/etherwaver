@@ -38,6 +38,9 @@
 #include "LogWindow.h"
 
 #include <QMutex>
+#include <QTimer>
+
+class QFileSystemWatcher;
 
 class QAction;
 class QMenu;
@@ -203,7 +206,17 @@ public slots:
 
         bool m_fingerprint_expanded = false;
 
+        // shared configuration with the web panel
+        QFileSystemWatcher* m_pSharedConfigWatcher = nullptr;
+        QTimer m_SharedConfigReloadTimer;
+        QByteArray m_KnownGeneralDigest;
+        QByteArray m_KnownServerDigest;
+        void watchSharedConfig();
+        void rememberSharedConfigState();
+
 private slots:
+    void sharedConfigFileChanged(const QString& path);
+    void reloadSharedConfig();
     void on_m_pCheckBoxAutoConfig_toggled(bool checked);
     void on_m_pComboServerList_currentIndexChanged(QString );
     void on_m_pButtonReload_clicked();

@@ -16,6 +16,8 @@ BuildRequires: qt5-qtbase-devel
 BuildRequires: libcurl-devel
 BuildRequires: desktop-file-utils
 BuildRequires: openssl-devel
+BuildRequires: python3
+Requires: python3 >= 3.9
 
 %description
 EtherWaver allows you to share one mouse and keyboard between multiple computers.
@@ -38,6 +40,8 @@ install -D -p -m 0644 doc/waverc.1 %{buildroot}%{_mandir}/man1/waverc.1
 install -D -p -m 0644 doc/wavers.1 %{buildroot}%{_mandir}/man1/wavers.1
 install -D -p -m 0644 res/barrier.desktop %{buildroot}%{_datadir}/applications/barrier.desktop
 install -D -p -m 0644 res/barrier.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/barrier.svg
+# web panel (waver-web): code, built frontend, launcher, systemd user unit
+DESTDIR=%{buildroot} cmake --install . --prefix %{_prefix} --component web
 
 cd %{buildroot}%{_bindir}
 
@@ -95,6 +99,11 @@ desktop-file-validate %{buildroot}/%{_datadir}/applications/barrier.desktop
 %{_datadir}/metainfo/%{name}.appdata.xml
 %{_mandir}/man1/waverc.1*
 %{_mandir}/man1/wavers.1*
+%{_bindir}/waver-web
+%{_datadir}/etherwaver/web
+%{_prefix}/lib/systemd/user/waver-web.service
+%{_docdir}/etherwaver/web.ini.example
+%{_docdir}/etherwaver/nginx.conf.example
 
 %changelog
 * Thu Mar 21 2019 wendall911 <wendallc@83864.com>

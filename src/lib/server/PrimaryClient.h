@@ -147,6 +147,19 @@ public:
     virtual void        sendDragInfo(UInt32 fileCount, const char* info, size_t size);
     virtual void        fileChunkSending(UInt8 mark, char* data, size_t dataSize);
 
+    //! @name remote control injection (protocol 1.8)
+    //! Unlike keyDown() etc. these really synthesize input on the
+    //! server's own screen.  Used for input forwarded by a client.
+    //@{
+    virtual void        injectKeyDown(KeyID, KeyModifierMask, KeyButton);
+    virtual void        injectKeyRepeat(KeyID, KeyModifierMask, SInt32 count, KeyButton);
+    virtual void        injectKeyUp(KeyButton);
+    virtual void        injectMouseButton(ButtonID, bool press);
+    virtual void        injectMouseMove(SInt32 x, SInt32 y);
+    virtual void        injectMouseRelativeMove(SInt32 dx, SInt32 dy);
+    virtual void        injectMouseWheel(SInt32 xDelta, SInt32 yDelta);
+    //@}
+
     virtual barrier::IStream*
                         getStream() const { return NULL; }
     bool                isPrimary() const { return true; }

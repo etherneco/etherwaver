@@ -171,6 +171,10 @@ public slots:
         void updateSSLFingerprint();
 
     private:
+        class RemoteControlPanel* m_pRemoteControlPanel = nullptr;
+        int m_BarrierStateForPanel = 0;
+        void updateRemoteControlPanel();
+
         QSettings& m_Settings;
         AppConfig* m_AppConfig;
         QProcess* m_pBarrier;

@@ -21,6 +21,7 @@
 #include "server/ClientProxy.h"
 #include "server/ClientProxyUnknown.h"
 #include "server/PrimaryClient.h"
+#include "server/RemoteControlArbiter.h"
 #include "server/ClientListener.h"
 #include "barrier/FileChunk.h"
 #include "barrier/IPlatformScreen.h"
@@ -1011,6 +1012,9 @@ Server::Server(
 	m_primaryClient->enable();
 	m_inputFilter->setPrimaryClient(m_primaryClient);
 
+	// remote control (protocol 1.8)
+	initRemoteControl();
+
 	// Determine if scroll lock is already set. If so, lock the cursor to the primary screen
 	if (m_primaryClient->getToggleMask() & KeyModifierScrollLock) {
 		LOG((CLOG_NOTE "Scroll Lock is on, locking cursor to screen"));
@@ -1073,6 +1077,9 @@ Server::~Server()
 							m_inputFilter);
 	m_events->removeHandler(Event::kTimer, this);
 	stopSwitch();
+
+	// release remote control before the clients go away
+	shutdownRemoteControl();
 
 	// force immediate disconnection of secondary clients
 	disconnect();
@@ -1309,6 +1316,7 @@ Server::setConfig(const Config& config)
 
 	// cut over
 	processOptions();
+	applyRemoteControlOptions();
 
 	// add ScrollLock as a hotkey to lock to the screen.  this was a
 	// built-in feature in earlier releases and is now supported via
@@ -2216,6 +2224,11 @@ Server::isLockedToScreen() const
 		return true;
 	}
 
+	// locked while a remote controller holds a mouse button (drag)
+	if (m_remoteControl && m_remoteControl->held().anyButtonDown()) {
+		return true;
+	}
+
 	// not locked
 	return false;
 }
@@ -2247,6 +2260,13 @@ Server::switchScreen(BaseClientProxy* dst,
 #endif
 	assert(m_active != NULL);
 
+	// never move the focus onto the client that is forwarding its own
+	// input (remote control) -- that would send its input back to it.
+	if (m_active != dst && isRemoteController(dst)) {
+		LOG((CLOG_DEBUG "not switching to \"%s\": it is controlling remotely", getName(dst).c_str()));
+		return;
+	}
+
 	LOG((CLOG_INFO "switch from \"%s\" to \"%s\" at %d,%d", getName(m_active).c_str(), getName(dst).c_str(), x, y));
 
 	// stop waiting to switch
@@ -2264,6 +2284,9 @@ Server::switchScreen(BaseClientProxy* dst,
 	// since that's a waste of time we skip that and just warp the
 	// mouse.
 	if (m_active != dst) {
+		// release remotely held keys/buttons on the screen we leave
+		remoteControlBeforeSwitch();
+
 		// leave active screen
 		if (!m_active->leave()) {
 			// cannot leave screen
@@ -2320,6 +2343,8 @@ Server::switchScreen(BaseClientProxy* dst,
 		Server::SwitchToScreenInfo* info =
 			Server::SwitchToScreenInfo::alloc(m_active->getName());
 		m_events->addEvent(Event(m_events->forServer().screenSwitched(), this, info));
+
+		remoteControlTargetChanged();
 	}
 	else {
 		const bool logicalScreenChanged =
@@ -3620,7 +3645,10 @@ void
 Server::onKeyDown(KeyID id, KeyModifierMask mask, KeyButton button,
 				const char* screens)
 {
-	LOG((CLOG_DEBUG1 "onKeyDown id=%d mask=0x%04x button=0x%04x", id, mask, button));
+	// remote-control input is never logged (it may be a password)
+	if (!m_remoteInputDispatch) {
+		LOG((CLOG_DEBUG1 "onKeyDown id=%d mask=0x%04x button=0x%04x", id, mask, button));
+	}
 	assert(m_active != NULL);
 
 	// relay
@@ -3647,7 +3675,10 @@ void
 Server::onKeyUp(KeyID id, KeyModifierMask mask, KeyButton button,
 				const char* screens)
 {
-	LOG((CLOG_DEBUG1 "onKeyUp id=%d mask=0x%04x button=0x%04x", id, mask, button));
+	// remote-control input is never logged (it may be a password)
+	if (!m_remoteInputDispatch) {
+		LOG((CLOG_DEBUG1 "onKeyUp id=%d mask=0x%04x button=0x%04x", id, mask, button));
+	}
 	assert(m_active != NULL);
 
 	// relay
@@ -3674,7 +3705,10 @@ void
 Server::onKeyRepeat(KeyID id, KeyModifierMask mask,
 				SInt32 count, KeyButton button)
 {
-	LOG((CLOG_DEBUG1 "onKeyRepeat id=%d mask=0x%04x count=%d button=0x%04x", id, mask, count, button));
+	// remote-control input is never logged (it may be a password)
+	if (!m_remoteInputDispatch) {
+		LOG((CLOG_DEBUG1 "onKeyRepeat id=%d mask=0x%04x count=%d button=0x%04x", id, mask, count, button));
+	}
 	assert(m_active != NULL);
 
 	// relay
@@ -4374,6 +4408,9 @@ Server::removeClient(BaseClientProxy* client)
 		return false;
 	}
 
+	// a controller (or the controlled host) disappears: release input
+	remoteControlClientRemoved(client);
+
 	// remove event handlers
 	m_events->removeHandler(m_events->forIScreen().shapeChanged(),
 							client->getEventTarget());
@@ -4516,6 +4553,8 @@ Server::forceLeaveClient(BaseClientProxy* client)
 		Server::SwitchToScreenInfo* info =
 			Server::SwitchToScreenInfo::alloc(m_active->getName());
 		m_events->addEvent(Event(m_events->forServer().screenSwitched(), this, info));
+
+		remoteControlTargetChanged();
 	}
 
 	// if this screen had the cursor when the screen saver activated
@@ -4765,12 +4804,18 @@ void Server::httpLoop()
 
             const std::string switchPrefix = "/set/screen/";
             const bool isConfigRequest = (path == "/get/config" || path == "/config");
+            const bool isRemoteControlRequest = (path == "/get/remote-control" && method == "GET");
             const bool isSetConfigRequest = (path == "/set/config" && method == "POST");
             bool isSwitchRequest = (path.compare(0, switchPrefix.size(), switchPrefix) == 0);
             std::string responseBody;
             std::string contentType;
 
-            if (isSwitchRequest) {
+            if (isRemoteControlRequest) {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                responseBody = m_remoteControlSnapshot.empty() ? "{}" : m_remoteControlSnapshot;
+                contentType = "application/json";
+            }
+            else if (isSwitchRequest) {
                 std::string requestedScreen = path.substr(switchPrefix.size());
                 bool found = false;
 

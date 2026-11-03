@@ -21,6 +21,8 @@
 #include "client/IInputBackend.h"
 #include "client/ServerProxy.h"
 #include "client/InputBackendFactory.h"
+#include "client/RemoteControlApi.h"
+#include "barrier/ILocalInputCapture.h"
 #include "barrier/Screen.h"
 #include "barrier/FileChunk.h"
 #include "barrier/DropHelper.h"
@@ -45,6 +47,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <fstream>
+#include <future>
+#include <chrono>
 
 //
 // Client
@@ -73,10 +77,36 @@ Client::Client(IEventQueue* events, const std::string& name, const NetworkAddres
     m_useSecureNetwork(args.m_enableCrypto),
     m_args(args),
     m_enableClipboard(true),
-    m_inputBackend(createInputBackend(screen, args))
+    m_inputBackend(createInputBackend(screen, args)),
+    m_serverMinorVersion(0),
+    m_remoteControlWakeType(Event::kUnknown),
+    m_remoteControlTimer(NULL),
+    m_loggedIgnoredInput(false)
 {
     assert(m_socketFactory != NULL);
     assert(m_screen        != NULL);
+
+    // remote control: forward this computer's keyboard and mouse
+    barrier::remote::Hotkey releaseHotkey = barrier::remote::Hotkey::defaultRelease();
+    if (!m_args.m_remoteControlReleaseHotkey.empty()) {
+        std::string error;
+        if (!barrier::remote::Hotkey::parse(m_args.m_remoteControlReleaseHotkey,
+                                            releaseHotkey, &error)) {
+            LOG((CLOG_WARN "invalid --remote-control-release-hotkey (%s), using %s",
+                 error.c_str(), barrier::remote::Hotkey::defaultRelease().toString().c_str()));
+            releaseHotkey = barrier::remote::Hotkey::defaultRelease();
+        }
+    }
+    m_remoteControl.reset(new RemoteControlController(this, releaseHotkey));
+    m_events->registerTypeOnce(m_remoteControlWakeType, "Client::remoteControlWake");
+    m_events->adoptHandler(m_remoteControlWakeType, m_remoteControl.get(),
+                            new TMethodEventJob<Client>(this,
+                                &Client::handleRemoteControlWake));
+    m_remoteControl->setWakeup([this]() { postRemoteControlWake(); });
+    m_remoteControlTimer = m_events->newTimer(1.0, m_remoteControl.get());
+    m_events->adoptHandler(Event::kTimer, m_remoteControl.get(),
+                            new TMethodEventJob<Client>(this,
+                                &Client::handleRemoteControlTimer));
 
     // register suspend/resume event handlers
     m_events->adoptHandler(m_events->forIScreen().suspend(),
@@ -111,6 +141,16 @@ Client::~Client()
                               getEventTarget());
     m_events->removeHandler(m_events->forIScreen().resume(),
                               getEventTarget());
+
+    // give the input back before anything else goes away
+    if (m_remoteControlApi) {
+        m_remoteControlApi->stop();
+    }
+    m_remoteControl->stop("shutdown", "client is shutting down: keyboard and mouse released");
+    m_remoteControl->setCapture(std::unique_ptr<ILocalInputCapture>());
+    m_events->removeHandler(Event::kTimer, m_remoteControl.get());
+    m_events->deleteTimer(m_remoteControlTimer);
+    m_events->removeHandler(m_remoteControlWakeType, m_remoteControl.get());
 
     cleanupTimer();
     cleanupScreen();
@@ -199,6 +239,7 @@ Client::handshakeComplete()
 {
     m_ready = true;
     m_screen->enable();
+    m_remoteControl->onConnected();
     sendEvent(m_events->forClient().connected(), NULL);
 }
 
@@ -331,6 +372,15 @@ Client::setClipboardDirty(ClipboardID, bool)
 void
 Client::keyDown(KeyID id, KeyModifierMask mask, KeyButton button)
 {
+    if (m_remoteControl->isForwarding()) {
+        // this computer is forwarding its own input; never apply input
+        // coming back from the server (protects against loops)
+        if (!m_loggedIgnoredInput) {
+            LOG((CLOG_DEBUG "ignoring server input while controlling remotely"));
+            m_loggedIgnoredInput = true;
+        }
+        return;
+    }
     m_inputBackend->keyDown(id, mask, button);
 }
 
@@ -338,42 +388,105 @@ void
 Client::keyRepeat(KeyID id, KeyModifierMask mask,
                 SInt32 count, KeyButton button)
 {
+    if (m_remoteControl->isForwarding()) {
+        // this computer is forwarding its own input; never apply input
+        // coming back from the server (protects against loops)
+        if (!m_loggedIgnoredInput) {
+            LOG((CLOG_DEBUG "ignoring server input while controlling remotely"));
+            m_loggedIgnoredInput = true;
+        }
+        return;
+    }
     m_inputBackend->keyRepeat(id, mask, count, button);
 }
 
 void
 Client::keyUp(KeyID id, KeyModifierMask mask, KeyButton button)
 {
+    if (m_remoteControl->isForwarding()) {
+        // this computer is forwarding its own input; never apply input
+        // coming back from the server (protects against loops)
+        if (!m_loggedIgnoredInput) {
+            LOG((CLOG_DEBUG "ignoring server input while controlling remotely"));
+            m_loggedIgnoredInput = true;
+        }
+        return;
+    }
     m_inputBackend->keyUp(id, mask, button);
 }
 
 void
 Client::mouseDown(ButtonID id)
 {
+    if (m_remoteControl->isForwarding()) {
+        // this computer is forwarding its own input; never apply input
+        // coming back from the server (protects against loops)
+        if (!m_loggedIgnoredInput) {
+            LOG((CLOG_DEBUG "ignoring server input while controlling remotely"));
+            m_loggedIgnoredInput = true;
+        }
+        return;
+    }
     m_inputBackend->mouseDown(id);
 }
 
 void
 Client::mouseUp(ButtonID id)
 {
+    if (m_remoteControl->isForwarding()) {
+        // this computer is forwarding its own input; never apply input
+        // coming back from the server (protects against loops)
+        if (!m_loggedIgnoredInput) {
+            LOG((CLOG_DEBUG "ignoring server input while controlling remotely"));
+            m_loggedIgnoredInput = true;
+        }
+        return;
+    }
     m_inputBackend->mouseUp(id);
 }
 
 void
 Client::mouseMove(SInt32 x, SInt32 y)
 {
+    if (m_remoteControl->isForwarding()) {
+        // this computer is forwarding its own input; never apply input
+        // coming back from the server (protects against loops)
+        if (!m_loggedIgnoredInput) {
+            LOG((CLOG_DEBUG "ignoring server input while controlling remotely"));
+            m_loggedIgnoredInput = true;
+        }
+        return;
+    }
     m_inputBackend->mouseMove(x, y);
 }
 
 void
 Client::mouseRelativeMove(SInt32 dx, SInt32 dy)
 {
+    if (m_remoteControl->isForwarding()) {
+        // this computer is forwarding its own input; never apply input
+        // coming back from the server (protects against loops)
+        if (!m_loggedIgnoredInput) {
+            LOG((CLOG_DEBUG "ignoring server input while controlling remotely"));
+            m_loggedIgnoredInput = true;
+        }
+        return;
+    }
     m_inputBackend->mouseRelativeMove(dx, dy);
 }
 
 void
 Client::mouseWheel(SInt32 xDelta, SInt32 yDelta)
 {
+    if (m_remoteControl->isForwarding()) {
+        // this computer is forwarding its own input; never apply input
+        // coming back from the server (protects against loops)
+        if (!m_loggedIgnoredInput) {
+            LOG((CLOG_DEBUG "ignoring server input while controlling remotely"));
+            m_loggedIgnoredInput = true;
+        }
+        return;
+    }
     m_inputBackend->mouseWheel(xDelta, yDelta);
 }
 
@@ -594,6 +707,15 @@ void
 Client::cleanupScreen()
 {
     if (m_server != NULL) {
+        // connection is going away: stop forwarding immediately.  the
+        // controller must see the connection as gone (m_ready false) so
+        // it does not try to send over it.
+        const bool wasReady = m_ready;
+        m_ready = false;
+        if (m_remoteControl) {
+            m_remoteControl->onDisconnected();
+        }
+        m_ready = wasReady;
         if (m_ready) {
             m_screen->disable();
             m_ready = false;
@@ -730,18 +852,25 @@ Client::handleHello(const Event&, void*)
     // check versions
     LOG((CLOG_DEBUG1 "got hello version %d.%d", major, minor));
     if (major < kProtocolMajorVersion ||
-        (major == kProtocolMajorVersion && minor < kProtocolMinorVersion)) {
+        (major == kProtocolMajorVersion && minor < kProtocolMinimumServerMinorVersion)) {
         sendConnectionFailedEvent(XIncompatibleClient(major, minor).what());
         cleanupTimer();
         cleanupConnection();
         return;
     }
 
-    // say hello back
-    LOG((CLOG_DEBUG1 "say hello version %d.%d", kProtocolMajorVersion, kProtocolMinorVersion));
+    // say hello back with the highest version both sides speak, so a
+    // newer client keeps working with an older server (the server picks
+    // its client proxy from this number).
+    SInt16 replyMinor = kProtocolMinorVersion;
+    if (major == kProtocolMajorVersion && minor < kProtocolMinorVersion) {
+        replyMinor = minor;
+    }
+    m_serverMinorVersion = replyMinor;
+    LOG((CLOG_DEBUG1 "say hello version %d.%d", kProtocolMajorVersion, replyMinor));
     ProtocolUtil::writef(m_stream, kMsgHelloBack,
                             kProtocolMajorVersion,
-                            kProtocolMinorVersion, &m_name);
+                            replyMinor, &m_name);
 
     // now connected but waiting to complete handshake
     setupScreen();
@@ -759,6 +888,7 @@ Client::handleHello(const Event&, void*)
 void
 Client::handleSuspend(const Event&, void*)
 {
+    m_remoteControl->onSuspend();
     LOG((CLOG_INFO "suspend"));
     m_suspended       = true;
     bool wasConnected = isConnected();
@@ -861,4 +991,194 @@ void
 Client::sendDragInfo(UInt32 fileCount, std::string& info, size_t size)
 {
     m_server->sendDragInfo(fileCount, info.c_str(), size);
+}
+
+//
+// remote control
+//
+
+void
+Client::setLocalInputCapture(std::unique_ptr<ILocalInputCapture> capture)
+{
+    if (capture) {
+        std::string why;
+        if (capture->isAvailable(why)) {
+            LOG((CLOG_INFO "remote control: local input capture backend \"%s\" ready",
+                 capture->name().c_str()));
+        }
+        else {
+            LOG((CLOG_INFO "remote control: capture backend \"%s\" unavailable: %s",
+                 capture->name().c_str(), why.c_str()));
+        }
+    }
+    m_remoteControl->setCapture(std::move(capture));
+
+    if (!m_remoteControlApi && m_args.m_remoteControlApiPort > 0) {
+        m_remoteControlApi.reset(new RemoteControlApi(m_args.m_remoteControlApiPort,
+            [this](const std::string& method, const std::string& path,
+                   const std::map<std::string, std::string>& query) {
+                return callRemoteControlApiOnMainThread(method, path, query);
+            }));
+        std::string error;
+        if (!m_remoteControlApi->start(error)) {
+            LOG((CLOG_WARN "remote control API not available on port %d: %s",
+                 m_args.m_remoteControlApiPort, error.c_str()));
+            m_remoteControlApi.reset();
+        }
+    }
+}
+
+void
+Client::postRemoteControlWake()
+{
+    // any thread
+    m_events->addEvent(Event(m_remoteControlWakeType, m_remoteControl.get()));
+}
+
+std::string
+Client::callRemoteControlApiOnMainThread(const std::string& method, const std::string& path,
+                                         const std::map<std::string, std::string>& query)
+{
+    // API thread: hand the command to the main thread and wait
+    std::shared_ptr<std::promise<std::string> > promise(new std::promise<std::string>());
+    std::future<std::string> future = promise->get_future();
+    {
+        std::lock_guard<std::mutex> lock(m_mainTasksMutex);
+        m_mainTasks.push_back([this, promise, method, path, query]() {
+            promise->set_value(executeRemoteControlCommand(method, path, query));
+        });
+    }
+    postRemoteControlWake();
+    if (future.wait_for(std::chrono::seconds(3)) != std::future_status::ready) {
+        return "{\"ok\":false,\"error\":\"client busy\"}";
+    }
+    return future.get();
+}
+
+void
+Client::handleRemoteControlWake(const Event&, void*)
+{
+    std::vector<std::function<void()> > tasks;
+    {
+        std::lock_guard<std::mutex> lock(m_mainTasksMutex);
+        tasks.swap(m_mainTasks);
+    }
+    for (size_t i = 0; i < tasks.size(); ++i) {
+        tasks[i]();
+    }
+    m_remoteControl->processPending();
+    if (!m_remoteControl->isForwarding()) {
+        m_loggedIgnoredInput = false;
+    }
+}
+
+void
+Client::handleRemoteControlTimer(const Event&, void*)
+{
+    m_remoteControl->tick();
+}
+
+std::string
+Client::executeRemoteControlCommand(const std::string& method, const std::string& path,
+                                    const std::map<std::string, std::string>& query)
+{
+    std::string error;
+    bool ok = true;
+    std::map<std::string, std::string>::const_iterator i;
+    if (path == "/remote-control" || path == "/remote-control/status") {
+        // status only
+    }
+    else if (method != "POST") {
+        return "{\"ok\":false,\"error\":\"use POST\"}";
+    }
+    else if (path == "/remote-control/start") {
+        ILocalInputCapture::Mode mode = ILocalInputCapture::kModeCapture;
+        i = query.find("mode");
+        if (i != query.end() && i->second == "window") {
+            mode = ILocalInputCapture::kModeWindow;
+        }
+        std::string target;
+        i = query.find("target");
+        if (i != query.end()) {
+            target = i->second;
+        }
+        i = query.find("takeover");
+        const bool takeover = (i != query.end() && (i->second == "1" || i->second == "true"));
+        ok = m_remoteControl->start(mode, target, takeover, error);
+    }
+    else if (path == "/remote-control/stop") {
+        m_remoteControl->stop("user", "released by the user: keyboard and mouse returned to this computer");
+    }
+    else if (path == "/remote-control/ctrl-alt-del") {
+        ok = m_remoteControl->sendCtrlAltDel(error);
+    }
+    else {
+        return "{\"ok\":false,\"error\":\"unknown command\"}";
+    }
+
+    std::string out = std::string("{\"ok\":") + (ok ? "true" : "false");
+    if (!ok) {
+        std::string escaped;
+        for (size_t k = 0; k < error.size(); ++k) {
+            if (error[k] == '"' || error[k] == '\\') escaped += '\\';
+            escaped += error[k];
+        }
+        out += ",\"error\":\"" + escaped + "\"";
+    }
+    out += ",\"status\":" +
+           RemoteControlController::statusToJson(m_remoteControl->status()) + "}";
+    return out;
+}
+
+void
+Client::onRemoteControlState(int state, int reason, UInt32 epoch,
+                             SInt32 x, SInt32 y, SInt32 w, SInt32 h,
+                             UInt8 capabilities, const std::string& controller,
+                             const std::string& target)
+{
+    m_remoteControl->onServerState(state, reason, epoch, x, y, w, h, capabilities,
+                                   controller, target);
+}
+
+bool
+Client::isConnectedToServer() const
+{
+    return m_server != NULL && m_ready;
+}
+
+bool
+Client::isRemoteControlSupported() const
+{
+    return isConnectedToServer() &&
+           m_serverMinorVersion >= kProtocolRemoteControlMinorVersion;
+}
+
+void
+Client::sendRemoteControlRequest(bool takeover, const std::string& target)
+{
+    if (isRemoteControlSupported()) {
+        m_server->requestRemoteControl(takeover, target);
+    }
+}
+
+void
+Client::sendRemoteControlRelease(UInt32 epoch)
+{
+    if (isRemoteControlSupported()) {
+        m_server->releaseRemoteControl(epoch);
+    }
+}
+
+void
+Client::sendRemoteInput(UInt32 epoch, const barrier::remote::Event& event)
+{
+    if (isRemoteControlSupported()) {
+        m_server->sendRemoteInput(epoch, event);
+    }
+}
+
+std::string
+Client::serverName() const
+{
+    return m_serverAddress.getHostname();
 }

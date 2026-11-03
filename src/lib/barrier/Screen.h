@@ -174,6 +174,21 @@ public:
     */
     void                mouseWheel(SInt32 xDelta, SInt32 yDelta);
 
+    //! @name remote control injection
+    //! Synthesize input on this screen regardless of whether it is the
+    //! primary screen.  Used by the server to inject input forwarded by a
+    //! remote-control client (protocol 1.8).
+    //@{
+    void                injectKeyDown(KeyID id, KeyModifierMask, KeyButton);
+    void                injectKeyRepeat(KeyID id, KeyModifierMask,
+                            SInt32 count, KeyButton);
+    void                injectKeyUp(KeyButton);
+    void                injectMouseButton(ButtonID, bool press);
+    void                injectMouseMove(SInt32 x, SInt32 y);
+    void                injectMouseRelativeMove(SInt32 dx, SInt32 dy);
+    void                injectMouseWheel(SInt32 xDelta, SInt32 yDelta);
+    //@}
+
     //! Notify of options changes
     /*!
     Resets all options to their default values.

@@ -315,9 +315,11 @@ ProtocolUtil::getLength(const char* fmt, va_list args)
                 break;
 
             case 's':
+                // a %s takes exactly one argument (const String*), see
+                // writef().  consuming a second one here broke messages
+                // with more than one string or a string before integers.
                 assert(len == 0);
                 len = (UInt32)(va_arg(args, String*))->size() + 4;
-                (void)va_arg(args, UInt8*);
                 break;
 
             case 'S':

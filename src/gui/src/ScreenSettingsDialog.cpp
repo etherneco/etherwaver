@@ -128,6 +128,7 @@ ScreenSettingsDialog::ScreenSettingsDialog(QWidget* parent, Screen* pScreen) :
     m_pCheckBoxScrollLock->setChecked(m_pScreen->fix(Screen::Fix::ScrollLock));
     m_pCheckBoxXTest->setChecked(m_pScreen->fix(Screen::Fix::XTest));
     m_pCheckBoxPreserveFocus->setChecked(m_pScreen->fix(Screen::Fix::PreserveFocus));
+    m_pCheckBoxRemoteControl->setChecked(m_pScreen->fix(Screen::Fix::RemoteControl));
 }
 
 void ScreenSettingsDialog::accept()
@@ -184,6 +185,7 @@ void ScreenSettingsDialog::accept()
     m_pScreen->setFix(Screen::Fix::ScrollLock, m_pCheckBoxScrollLock->isChecked());
     m_pScreen->setFix(Screen::Fix::XTest, m_pCheckBoxXTest->isChecked());
     m_pScreen->setFix(Screen::Fix::PreserveFocus, m_pCheckBoxPreserveFocus->isChecked());
+    m_pScreen->setFix(Screen::Fix::RemoteControl, m_pCheckBoxRemoteControl->isChecked());
 
     QDialog::accept();
 }

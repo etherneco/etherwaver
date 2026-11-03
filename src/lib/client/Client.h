@@ -28,7 +28,13 @@
 #include "base/EventTypes.h"
 #include "mt/CondVar.h"
 
+#include <functional>
+#include <map>
 #include <memory>
+#include <mutex>
+#include <vector>
+
+#include "client/RemoteControlController.h"
 
 class EventQueueTimer;
 namespace barrier { class Screen; }
@@ -40,12 +46,14 @@ class IEventQueue;
 class Thread;
 class TCPSocket;
 class IInputBackend;
+class ILocalInputCapture;
+class RemoteControlApi;
 
 //! Barrier client
 /*!
 This class implements the top-level client algorithms for barrier.
 */
-class Client : public IClient, public INode {
+class Client : public IClient, public INode, public IRemoteControlTransport {
 public:
     class FailInfo {
     public:
@@ -96,6 +104,36 @@ public:
 
     //! Send dragging file information back to server
     void sendDragInfo(UInt32 fileCount, std::string& info, size_t size);
+
+    //! @name remote control (forward this computer's input to the server)
+    //@{
+
+    //! Set the platform capture backend (adopted).  Also starts the
+    //! local control API if enabled.
+    void                setLocalInputCapture(std::unique_ptr<ILocalInputCapture> capture);
+
+    //! Remote control state from the server (called by ServerProxy)
+    void                onRemoteControlState(int state, int reason, UInt32 epoch,
+                            SInt32 x, SInt32 y, SInt32 w, SInt32 h,
+                            UInt8 capabilities, const std::string& controller,
+                            const std::string& target);
+
+    RemoteControlController* getRemoteControl() { return m_remoteControl.get(); }
+
+    //! Execute a local API command (main thread), returns JSON
+    std::string         executeRemoteControlCommand(const std::string& method,
+                            const std::string& path,
+                            const std::map<std::string, std::string>& query);
+
+    // IRemoteControlTransport
+    virtual bool        isConnectedToServer() const;
+    virtual bool        isRemoteControlSupported() const;
+    virtual void        sendRemoteControlRequest(bool takeover, const std::string& target);
+    virtual void        sendRemoteControlRelease(UInt32 epoch);
+    virtual void        sendRemoteInput(UInt32 epoch, const barrier::remote::Event& event);
+    virtual std::string serverName() const;
+
+    //@}
 
 
     //@}
@@ -195,6 +233,12 @@ private:
     void                handleFileChunkSending(const Event&, void*);
     void                handleFileRecieveCompleted(const Event&, void*);
     void                handleStopRetry(const Event&, void*);
+    void                handleRemoteControlWake(const Event&, void*);
+    void                handleRemoteControlTimer(const Event&, void*);
+    std::string         callRemoteControlApiOnMainThread(const std::string& method,
+                            const std::string& path,
+                            const std::map<std::string, std::string>& query);
+    void                postRemoteControlWake();
     void                onFileRecieveCompleted();
     void                sendClipboardThread(void*);
 
@@ -229,4 +273,14 @@ private:
     ClientArgs            m_args;
     bool                m_enableClipboard;
     std::unique_ptr<IInputBackend> m_inputBackend;
+
+    // remote control
+    SInt16              m_serverMinorVersion;
+    std::unique_ptr<RemoteControlController> m_remoteControl;
+    std::unique_ptr<RemoteControlApi> m_remoteControlApi;
+    Event::Type         m_remoteControlWakeType;
+    EventQueueTimer*    m_remoteControlTimer;
+    std::mutex          m_mainTasksMutex;
+    std::vector<std::function<void()> > m_mainTasks;
+    bool                m_loggedIgnoredInput;
 };

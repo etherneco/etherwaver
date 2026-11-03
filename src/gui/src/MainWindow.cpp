@@ -33,6 +33,7 @@
 #include "ShutdownCh.h"
 #include "base/String.h"
 #include "common/DataDirectories.h"
+#include "RemoteControlPanel.h"
 #include "net/FingerprintDatabase.h"
 #include "net/SecureUtils.h"
 
@@ -523,6 +524,13 @@ MainWindow::MainWindow(QSettings& settings, AppConfig& appConfig) :
     m_SuppressAutoConfigWarning = true;
     m_pCheckBoxAutoConfig->setChecked(appConfig.autoConfig());
     m_SuppressAutoConfigWarning = false;
+
+    // remote control: use this computer's mouse and keyboard on the server
+    m_pRemoteControlPanel = new RemoteControlPanel(m_Settings,
+        QString::fromStdString(barrier::DataDirectories::profile().u8string()), centralWidget());
+    verticalLayout_2->insertWidget(verticalLayout_2->indexOf(m_pGroupClient) + 1, m_pRemoteControlPanel);
+    connect(m_pGroupClient, &QGroupBox::toggled, [this](bool) { updateRemoteControlPanel(); });
+    updateRemoteControlPanel();
 
     m_pComboServerList->hide();
     m_pLabelPadlock->hide();
@@ -1032,6 +1040,11 @@ bool MainWindow::clientArgs(QStringList& args, QString& app)
         args << "--log" << appConfig().logFilenameCmd();
     }
 
+    if (m_pRemoteControlPanel != nullptr) {
+        args << "--remote-control-release-hotkey" << m_pRemoteControlPanel->releaseHotkey();
+        args << "--remote-control-api-port" << QString::number(m_pRemoteControlPanel->apiPort());
+    }
+
 #if defined(Q_OS_LINUX)
     if (appConfig().getUhidEnabled()) {
         args << "--uhid=enable";
@@ -1245,6 +1258,8 @@ void MainWindow::setBarrierState(qBarrierState state)
 
     m_pActionStartBarrier->setEnabled(!connected);
     m_pActionStopBarrier->setEnabled(connected);
+    m_BarrierStateForPanel = state;
+    updateRemoteControlPanel();
 
     switch (state)
     {
@@ -1991,4 +2006,17 @@ void MainWindow::windowStateChanged()
 void MainWindow::showLogWindow()
 {
     m_pLogWindow->show();
+}
+
+void MainWindow::updateRemoteControlPanel()
+{
+    if (m_pRemoteControlPanel == nullptr) {
+        return;
+    }
+    const bool client = m_pGroupClient->isChecked();
+    m_pRemoteControlPanel->setVisible(client);
+    m_pRemoteControlPanel->setClientRunning(client &&
+        (m_BarrierStateForPanel == barrierConnected ||
+         m_BarrierStateForPanel == barrierConnecting ||
+         m_BarrierStateForPanel == barrierTransfering));
 }

@@ -52,6 +52,56 @@
 #include "platform/OSXDragSimulator.h"
 #endif
 
+#include "barrier/ILocalInputCapture.h"
+#if WINAPI_XWINDOWS
+#include "platform/XWindowsLocalInputCapture.h"
+#endif
+#if defined(__linux__)
+#include "platform/LinuxEvdevLocalInputCapture.h"
+#endif
+
+namespace {
+
+//! local input capture for remote control on this platform
+std::unique_ptr<ILocalInputCapture>
+createLocalInputCapture(const ClientArgs& args)
+{
+    const std::string backend = args.m_remoteControlBackend;
+    if (backend == "none") {
+        return std::unique_ptr<ILocalInputCapture>();
+    }
+#if defined(__linux__)
+    std::unique_ptr<ILocalInputCapture> evdev(new LinuxEvdevLocalInputCapture(
+        args.m_remoteControlXkbLayout, args.m_remoteControlXkbVariant,
+        args.m_uhidName.empty() ? std::string("Etherwaver") : std::string(args.m_uhidName)));
+    if (backend == "evdev") {
+        return evdev;
+    }
+#endif
+#if WINAPI_XWINDOWS
+    std::unique_ptr<ILocalInputCapture> x11(new XWindowsLocalInputCapture(args.m_display));
+    if (backend == "x11") {
+        return x11;
+    }
+#  if defined(__linux__)
+    // auto: under Wayland only evdev can capture globally
+    std::string why;
+    if (XWindowsLocalInputCapture::isWaylandSession() && evdev->isAvailable(why)) {
+        return evdev;
+    }
+#  endif
+    return x11;
+#elif defined(__linux__)
+    return evdev;
+#else
+    // Windows and macOS clients: local capture is not implemented yet
+    (void)args;
+    return std::unique_ptr<ILocalInputCapture>();
+#endif
+}
+
+} // namespace
+
 #include <iostream>
 #include <stdio.h>
 #include <sstream>
@@ -165,6 +215,17 @@ ClientApp::help()
            << "      --yscroll <delta>    defines the vertical scrolling delta, which is\n"
            << "                           120 by default.\n"
            << UHID_INFO
+           << "      --remote-control-release-hotkey <keys>\n"
+           << "                           local shortcut that ends remote control\n"
+           << "                           (default Ctrl+Alt+Shift+Q).\n"
+           << "      --remote-control-api-port <port>\n"
+           << "                           local control API port on 127.0.0.1\n"
+           << "                           used by the GUI (default 24803, 0 = off).\n"
+           << "      --remote-control-backend <auto|x11|evdev|none>\n"
+           << "                           how local input is captured (Linux).\n"
+           << "      --remote-control-xkb-layout <layout>\n"
+           << "      --remote-control-xkb-variant <variant>\n"
+           << "                           keyboard layout for the evdev backend.\n"
            << HELP_COMMON_INFO_2
            << "\n"
            << "Default options are marked with a *\n"
@@ -436,6 +497,7 @@ ClientApp::startClient()
                 *m_serverAddress, clientScreen);
             m_clientScreen  = clientScreen;
             logClientScreenLayout(args().m_name, m_clientScreen);
+            m_client->setLocalInputCapture(createLocalInputCapture(args()));
             LOG((CLOG_NOTE "started client"));
         }
 

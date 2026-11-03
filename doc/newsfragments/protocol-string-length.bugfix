@@ -1,0 +1,1 @@
+Fixed ProtocolUtil computing message lengths for "%s" arguments by consuming two variadic arguments, which corrupted any message with more than one string. Clients now also answer an older server with the server's protocol version instead of refusing it.

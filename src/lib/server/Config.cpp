@@ -744,6 +744,15 @@ Config::readSectionOptions(ConfigReadContext& s)
 		else if (name == "clipboardSharing") {
 			addOption("", kOptionClipboardSharing, s.parseBoolean(value));
 		}
+		else if (name == "remoteControl") {
+			addOption("", kOptionRemoteControl, s.parseBoolean(value));
+		}
+		else if (name == "remoteControlTakeover") {
+			addOption("", kOptionRemoteControlTakeover, s.parseBoolean(value));
+		}
+		else if (name == "remoteControlTimeout") {
+			addOption("", kOptionRemoteControlTimeout, s.parseInt(value));
+		}
 
 		else {
 			handled = false;
@@ -898,6 +907,10 @@ Config::readSectionScreens(ConfigReadContext& s)
 			}
 			else if (name == "preserveFocus") {
 				addOption(screen, kOptionScreenPreserveFocus,
+					s.parseBoolean(value));
+			}
+			else if (name == "remoteControl") {
+				addOption(screen, kOptionRemoteControl,
 					s.parseBoolean(value));
 			}
 			else {
@@ -1360,6 +1373,15 @@ Config::getOptionName(OptionID id)
 	if (id == kOptionClipboardSharing) {
 		return "clipboardSharing";
 	}
+	if (id == kOptionRemoteControl) {
+		return "remoteControl";
+	}
+	if (id == kOptionRemoteControlTakeover) {
+		return "remoteControlTakeover";
+	}
+	if (id == kOptionRemoteControlTimeout) {
+		return "remoteControlTimeout";
+	}
 	return NULL;
 }
 
@@ -1376,7 +1398,9 @@ std::string Config::getOptionValue(OptionID id, OptionValue value)
 		id == kOptionRelativeMouseMoves ||
 		id == kOptionWin32KeepForeground ||
 		id == kOptionScreenPreserveFocus ||
-		id == kOptionClipboardSharing) {
+		id == kOptionClipboardSharing ||
+		id == kOptionRemoteControl ||
+		id == kOptionRemoteControlTakeover) {
 		return (value != 0) ? "true" : "false";
 	}
 	if (id == kOptionModifierMapForShift ||
@@ -1411,7 +1435,8 @@ std::string Config::getOptionValue(OptionID id, OptionValue value)
 	if (id == kOptionHeartbeat ||
 		id == kOptionScreenSwitchCornerSize ||
 		id == kOptionScreenSwitchDelay ||
-		id == kOptionScreenSwitchTwoTap) {
+		id == kOptionScreenSwitchTwoTap ||
+		id == kOptionRemoteControlTimeout) {
 		return barrier::string::sprintf("%d", value);
 	}
 	if (id == kOptionScreenSwitchCorners) {

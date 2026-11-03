@@ -26,6 +26,7 @@
 #include "server/ClientProxy1_4.h"
 #include "server/ClientProxy1_5.h"
 #include "server/ClientProxy1_6.h"
+#include "server/ClientProxy1_8.h"
 #include "barrier/protocol_types.h"
 #include "barrier/ProtocolUtil.h"
 #include "barrier/XBarrier.h"
@@ -240,6 +241,14 @@ ClientProxyUnknown::handleData(const Event&, void*)
 
             case 7:
                 m_proxy = new ClientProxy1_6(name, m_stream, m_server, m_events);
+                break;
+
+            default:
+                // 1.8 and newer: newer clients answer with
+                // min(server, client) so anything above 8 is 8.
+                if (minor >= 8) {
+                    m_proxy = new ClientProxy1_8(name, m_stream, m_server, m_events);
+                }
                 break;
             }
         }

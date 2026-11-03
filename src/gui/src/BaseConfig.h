@@ -52,6 +52,7 @@ public:
         ScrollLock,
         XTest,
         PreserveFocus,
+        RemoteControl,  // screen may forward its own input to the server
         Count
     };
 

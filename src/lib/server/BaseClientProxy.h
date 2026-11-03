@@ -87,6 +87,16 @@ public:
     virtual void        resetOptions() = 0;
     virtual void        setOptions(const OptionsList& options) = 0;
     virtual void        sendLayoutSnapshot(const std::string&) { }
+
+    //! Remote control (protocol 1.8)
+    //! true if the client speaks the remote control messages
+    virtual bool        supportsRemoteControl() const { return false; }
+    //! Send kMsgCRemoteControlState; ignored by older clients
+    virtual void        sendRemoteControlState(int /*state*/, int /*reason*/,
+                            UInt32 /*epoch*/, SInt32 /*x*/, SInt32 /*y*/,
+                            SInt32 /*w*/, SInt32 /*h*/, UInt8 /*capabilities*/,
+                            const std::string& /*controller*/,
+                            const std::string& /*target*/) { }
     virtual void        sendDragInfo(UInt32 fileCount, const char* info,
                             size_t size) = 0;
     virtual void        fileChunkSending(UInt8 mark, char* data, size_t dataSize) = 0;

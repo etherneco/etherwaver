@@ -384,6 +384,10 @@ ServerProxy::parseMessage(const UInt8* code)
     else if (memcmp(code, kMsgDFileTransfer, 4) == 0) {
         fileChunkReceived();
     }
+    else if (memcmp(code, kMsgCRemoteControlState, 4) == 0) {
+        remoteControlState();
+    }
+
     else if (memcmp(code, kMsgDDragInfo, 4) == 0) {
         dragInfoReceived();
     }
@@ -1088,4 +1092,48 @@ ServerProxy::sendDragInfo(UInt32 fileCount, const char* info, size_t size)
 {
     std::string data(info, size);
     ProtocolUtil::writef(m_stream, kMsgDDragInfo, fileCount, &data);
+}
+
+void
+ServerProxy::requestRemoteControl(bool takeover, const std::string& target)
+{
+    LOG((CLOG_DEBUG "request remote control of \"%s\"%s",
+         target.empty() ? "(server)" : target.c_str(), takeover ? " (takeover)" : ""));
+    ProtocolUtil::writef(m_stream, kMsgCRemoteControlRequest,
+                         (UInt8)(takeover ? 1 : 0), &target);
+}
+
+void
+ServerProxy::releaseRemoteControl(UInt32 epoch)
+{
+    LOG((CLOG_DEBUG "release remote control (epoch %u)", epoch));
+    ProtocolUtil::writef(m_stream, kMsgCRemoteControlRelease, epoch);
+}
+
+void
+ServerProxy::sendRemoteInput(UInt32 epoch, const barrier::remote::Event& event)
+{
+    // never log the event content (it may be a password)
+    ProtocolUtil::writef(m_stream, kMsgDRemoteInput, epoch, (UInt8)event.m_kind,
+                         (UInt32)event.m_a, (UInt32)event.m_b,
+                         (UInt32)event.m_c, (UInt32)event.m_d);
+}
+
+void
+ServerProxy::remoteControlState()
+{
+    UInt8 state = 0, reason = 0, caps = 0;
+    UInt32 epoch = 0, x = 0, y = 0, w = 0, h = 0;
+    std::string controller, target;
+    if (!ProtocolUtil::readf(m_stream, kMsgCRemoteControlState + 4,
+                             &state, &reason, &epoch, &x, &y, &w, &h, &caps,
+                             &controller, &target)) {
+        LOG((CLOG_WARN "malformed remote control state from server"));
+        return;
+    }
+    LOG((CLOG_DEBUG "remote control state %s from server",
+         barrier::remote::controlStateName(state)));
+    m_client->onRemoteControlState(state, reason, epoch,
+                                   (SInt32)x, (SInt32)y, (SInt32)w, (SInt32)h,
+                                   caps, controller, target);
 }

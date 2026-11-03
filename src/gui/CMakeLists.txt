@@ -42,6 +42,7 @@ set(GUI_SOURCE_FILES
     src/NewScreenWidget.cpp
     src/QBarrierApplication.cpp
     src/QUtility.cpp
+    src/RemoteControlPanel.cpp
     src/Screen.cpp
     src/ScreenSettingsDialog.cpp
     src/ScreenSetupModel.cpp

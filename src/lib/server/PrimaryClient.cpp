@@ -278,3 +278,45 @@ PrimaryClient::setOptions(const OptionsList& options)
 {
     m_screen->setOptions(options);
 }
+
+void
+PrimaryClient::injectKeyDown(KeyID key, KeyModifierMask mask, KeyButton button)
+{
+    m_screen->injectKeyDown(key, mask, button);
+}
+
+void
+PrimaryClient::injectKeyRepeat(KeyID key, KeyModifierMask mask, SInt32 count, KeyButton button)
+{
+    m_screen->injectKeyRepeat(key, mask, count, button);
+}
+
+void
+PrimaryClient::injectKeyUp(KeyButton button)
+{
+    m_screen->injectKeyUp(button);
+}
+
+void
+PrimaryClient::injectMouseButton(ButtonID button, bool press)
+{
+    m_screen->injectMouseButton(button, press);
+}
+
+void
+PrimaryClient::injectMouseMove(SInt32 x, SInt32 y)
+{
+    m_screen->injectMouseMove(x, y);
+}
+
+void
+PrimaryClient::injectMouseRelativeMove(SInt32 dx, SInt32 dy)
+{
+    m_screen->injectMouseRelativeMove(dx, dy);
+}
+
+void
+PrimaryClient::injectMouseWheel(SInt32 xDelta, SInt32 yDelta)
+{
+    m_screen->injectMouseWheel(xDelta, yDelta);
+}

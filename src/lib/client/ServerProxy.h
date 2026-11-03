@@ -22,6 +22,7 @@
 #include "barrier/key_types.h"
 #include "base/Event.h"
 #include "base/Stopwatch.h"
+#include "barrier/RemoteInput.h"
 
 class Client;
 class ClientInfo;
@@ -58,6 +59,13 @@ public:
 
     // sending dragging information to server
     void                sendDragInfo(UInt32 fileCount, const char* info, size_t size);
+
+    //! @name remote control (protocol 1.8)
+    //@{
+    void                requestRemoteControl(bool takeover, const std::string& target);
+    void                releaseRemoteControl(UInt32 epoch);
+    void                sendRemoteInput(UInt32 epoch, const barrier::remote::Event& event);
+    //@}
 
 #ifdef BARRIER_TEST_ENV
     void                handleDataForTest() { handleData(Event(), NULL); }
@@ -107,6 +115,7 @@ private:
     void                infoAcknowledgment();
     void                fileChunkReceived();
     void                dragInfoReceived();
+    void                remoteControlState();
     void                handleClipboardSendingEvent(const Event&, void*);
 
 private:

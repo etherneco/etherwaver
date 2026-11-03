@@ -33,9 +33,19 @@
 // 1.5:  adds file transfer and removes home brew crypto
 // 1.6:  adds clipboard streaming
 // 1.7:  adds per-host screen list reporting
+// 1.8:  adds remote control (client forwards its local keyboard and
+//       mouse to the server, see kMsgCRemoteControlRequest)
 // NOTE: with new version, barrier minor version should increment
 static const SInt16        kProtocolMajorVersion = 1;
-static const SInt16        kProtocolMinorVersion = 7;
+static const SInt16        kProtocolMinorVersion = 8;
+
+// oldest server minor version a client still talks to.  the client
+// answers the server's hello with min(server, client) minor version so
+// newer clients keep working with older servers.
+static const SInt16        kProtocolMinimumServerMinorVersion = 7;
+
+// first minor version supporting remote control messages
+static const SInt16        kProtocolRemoteControlMinorVersion = 8;
 
 // default contact port number
 static const UInt16        kDefaultPort = 24800;
@@ -290,6 +300,40 @@ extern const char*        kMsgDFileTransfer;
 // the number of dragging objects. Then the following string consists
 // of each object's directory.
 extern const char*        kMsgDDragInfo;
+
+//
+// remote control codes (protocol 1.8)
+//
+// remote control lets a client forward its *local* keyboard and mouse
+// to a host managed by the server (the server itself or another
+// client).  the server injects the events through its normal input
+// path.  exactly one client controls at a time.
+
+// request control:  secondary -> primary
+// $1 = flags (bit 0: take over from the current controller),
+// $2 = name of the host to control (empty string = the server).
+// the server answers with kMsgCRemoteControlState.
+extern const char*        kMsgCRemoteControlRequest;
+
+// release control:  secondary -> primary
+// $1 = epoch of the grant being released.  the server releases all
+// keys and buttons still held by this controller.
+extern const char*        kMsgCRemoteControlRelease;
+
+// remote control state:  primary -> secondary
+// $1 = barrier::remote::ControlState, $2 = ControlReason,
+// $3 = epoch (non-zero while granted; input carrying another epoch is
+// discarded), $4,$5,$6,$7 = x, y, width, height of the controlled host,
+// $8 = capability flags, $9 = name of the controlling client,
+// $10 = name of the controlled host.
+// sent to the requester, and to every remote-control capable client
+// whenever the controller changes.
+extern const char*        kMsgCRemoteControlState;
+
+// forwarded input:  secondary -> primary
+// $1 = epoch from the grant, $2 = barrier::remote::EventKind,
+// $3..$6 = event arguments (see EventKind).
+extern const char*        kMsgDRemoteInput;
 
 //
 // query codes

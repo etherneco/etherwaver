@@ -1413,4 +1413,186 @@ Server response:
         <translation type="unfinished"></translation>
     </message>
 </context>
+<context>
+    <name>RemoteControlPanel</name>
+    <message>
+        <source>Control the server with this computer&apos;s mouse and keyboard</source>
+        <translation>Sterowanie serwerem myszą i klawiaturą tego komputera</translation>
+    </message>
+    <message>
+        <source>Full capture (all keys, mouse locked)</source>
+        <translation>Pełne przechwycenie (wszystkie klawisze, mysz zablokowana)</translation>
+    </message>
+    <message>
+        <source>Session window (only while the window has focus)</source>
+        <translation>Okno sesji (tylko gdy okno ma fokus)</translation>
+    </message>
+    <message>
+        <source>the server</source>
+        <translation>serwer</translation>
+    </message>
+    <message>
+        <source>Name of the computer to control; leave empty to control the server itself.</source>
+        <translation>Nazwa sterowanego komputera; pozostaw puste, aby sterować samym serwerem.</translation>
+    </message>
+    <message>
+        <source>Pressing this shortcut on this computer always ends remote control, even when the connection is lost. It is never sent to the server. A change takes effect when the client is restarted.</source>
+        <translation>Ten skrót naciśnięty na tym komputerze zawsze kończy sterowanie zdalne, także po utracie połączenia. Nigdy nie jest wysyłany do serwera. Zmiana obowiązuje po ponownym uruchomieniu klienta.</translation>
+    </message>
+    <message>
+        <source>Control with local mouse and keyboard</source>
+        <translation>Steruj lokalną myszą i klawiaturą</translation>
+    </message>
+    <message>
+        <source>Take over control</source>
+        <translation>Przejmij sterowanie</translation>
+    </message>
+    <message>
+        <source>Release mouse and keyboard</source>
+        <translation>Zwolnij mysz i klawiaturę</translation>
+    </message>
+    <message>
+        <source>Send Ctrl+Alt+Del</source>
+        <translation>Wyślij Ctrl+Alt+Del</translation>
+    </message>
+    <message>
+        <source>Mode:</source>
+        <translation>Tryb:</translation>
+    </message>
+    <message>
+        <source>Computer:</source>
+        <translation>Komputer:</translation>
+    </message>
+    <message>
+        <source>Emergency release shortcut:</source>
+        <translation>Skrót awaryjny:</translation>
+    </message>
+    <message>
+        <source>Remote control</source>
+        <translation>Sterowanie zdalne</translation>
+    </message>
+    <message>
+        <source>The client is not running or its control interface is not available.</source>
+        <translation>Klient nie działa albo jego interfejs sterowania jest niedostępny.</translation>
+    </message>
+    <message>
+        <source>The mouse and keyboard of this computer will control the server.
+
+Press %1 at any time to return them to this computer. The shortcut works even when the connection is lost.</source>
+        <translation>Mysz i klawiatura tego komputera będą sterować serwerem.
+
+Naciśnij %1 w dowolnej chwili, aby wrócić do tego komputera. Skrót działa także po utracie połączenia.</translation>
+    </message>
+    <message>
+        <source>Do not show again</source>
+        <translation>Nie pokazuj ponownie</translation>
+    </message>
+    <message>
+        <source>Remote control (paused)</source>
+        <translation>Sterowanie zdalne (wstrzymane)</translation>
+    </message>
+    <message>
+        <source>Requesting control...</source>
+        <translation>Żądanie sterowania...</translation>
+    </message>
+    <message>
+        <source>View only</source>
+        <translation>Tylko podgląd</translation>
+    </message>
+    <message>
+        <source>Local control</source>
+        <translation>Sterowanie lokalne</translation>
+    </message>
+    <message>
+        <source>Mouse and keyboard now control: %1. Press %2 to return to this computer.</source>
+        <translation>Mysz i klawiatura sterują teraz: %1. Naciśnij %2, aby wrócić do tego komputera.</translation>
+    </message>
+    <message>
+        <source>The session window lost the focus: forwarding is paused and all keys were released. Click the window to continue.</source>
+        <translation>Okno sesji straciło fokus: przekazywanie wstrzymane, wszystkie klawisze zwolnione. Kliknij okno, aby kontynuować.</translation>
+    </message>
+    <message>
+        <source>Connection to the server lost. Mouse and keyboard were returned to this computer; the server releases all keys by itself.</source>
+        <translation>Utracono połączenie z serwerem. Mysz i klawiatura wróciły do tego komputera; serwer sam zwolni wszystkie klawisze.</translation>
+    </message>
+    <message>
+        <source>%1 pressed: mouse and keyboard returned to this computer.</source>
+        <translation>Naciśnięto %1: mysz i klawiatura wróciły do tego komputera.</translation>
+    </message>
+    <message>
+        <source>Mouse and keyboard returned to this computer.</source>
+        <translation>Mysz i klawiatura wróciły do tego komputera.</translation>
+    </message>
+    <message>
+        <source>This computer may only be controlled. Allow it to control the server in the server&apos;s screen settings (&quot;Allow this computer to control the server&quot;).</source>
+        <translation>Ten komputer może być tylko sterowany. Zezwól mu na sterowanie w ustawieniach ekranu na serwerze („Zezwól temu komputerowi sterować serwerem”).</translation>
+    </message>
+    <message>
+        <source>Control refused: %1</source>
+        <translation>Odmowa sterowania: %1</translation>
+    </message>
+    <message>
+        <source>Control ended by the server: %1</source>
+        <translation>Serwer zakończył sterowanie: %1</translation>
+    </message>
+    <message>
+        <source>This computer is going to sleep or is locking: mouse and keyboard released.</source>
+        <translation>Komputer przechodzi w uśpienie lub blokuje się: mysz i klawiatura zwolnione.</translation>
+    </message>
+    <message>
+        <source>Capturing was interrupted by the system: mouse and keyboard returned to this computer.</source>
+        <translation>System przerwał przechwytywanie: mysz i klawiatura wróciły do tego komputera.</translation>
+    </message>
+    <message>
+        <source>The network could not keep up: remote control stopped and all keys were released.</source>
+        <translation>Sieć nie nadążała: sterowanie zdalne zatrzymane, wszystkie klawisze zwolnione.</translation>
+    </message>
+    <message>
+        <source>Start the client to control the server from here.</source>
+        <translation>Uruchom klienta, aby sterować serwerem z tego komputera.</translation>
+    </message>
+    <message>
+        <source>Waiting for the client...</source>
+        <translation>Oczekiwanie na klienta...</translation>
+    </message>
+    <message>
+        <source>Currently controlled by: %1</source>
+        <translation>Aktualnie steruje: %1</translation>
+    </message>
+    <message>
+        <source>Press &quot;Control with local mouse and keyboard&quot; to use this computer&apos;s devices on the server. %1 always returns them here.</source>
+        <translation>Naciśnij „Steruj lokalną myszą i klawiaturą”, aby używać urządzeń tego komputera na serwerze. %1 zawsze przywraca je tutaj.</translation>
+    </message>
+    <message>
+        <source>Not connected to the server.</source>
+        <translation>Brak połączenia z serwerem.</translation>
+    </message>
+    <message>
+        <source>The server does not support remote control. Update it to this Etherwaver version.</source>
+        <translation>Serwer nie obsługuje sterowania zdalnego. Zaktualizuj go do tej wersji Etherwavera.</translation>
+    </message>
+    <message>
+        <source>Input capture is not available: %1</source>
+        <translation>Przechwytywanie wejścia niedostępne: %1</translation>
+    </message>
+    <message>
+        <source>Sends the secure attention sequence to the controlled computer.</source>
+        <translation>Wysyła sekwencję bezpieczeństwa do sterowanego komputera.</translation>
+    </message>
+    <message>
+        <source>Sent as an ordinary key combination; the controlled system decides what it does.</source>
+        <translation>Wysyłane jako zwykła kombinacja klawiszy; jej działanie zależy od sterowanego systemu.</translation>
+    </message>
+</context>
+<context>
+    <name>ScreenSettingsDialogBase</name>
+    <message>
+        <source>Allow this computer to control the server with its own mouse and keyboard</source>
+        <translation>Zezwól temu komputerowi sterować serwerem własną myszą i klawiaturą</translation>
+    </message>
+    <message>
+        <source>Lets this computer forward its own keyboard and mouse to the server (remote control). Without it the computer can only be controlled.</source>
+        <translation>Pozwala temu komputerowi przekazywać własną klawiaturę i mysz do serwera (sterowanie zdalne). Bez tego komputer może być tylko sterowany.</translation>
+    </message>
+</context>
 </TS>

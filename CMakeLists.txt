@@ -256,6 +256,19 @@ if (UNIX)
             list (APPEND libs Xi)
         endif()
 
+        # optional: xkbcommon translates evdev key codes for the evdev
+        # remote-control capture backend (Wayland / console clients)
+        if (${CMAKE_SYSTEM_NAME} MATCHES "Linux" AND ${PKG_CONFIG_FOUND})
+            pkg_check_modules (XKBCOMMON xkbcommon)
+            if (XKBCOMMON_FOUND)
+                add_definitions (-DHAVE_XKBCOMMON=1)
+                include_directories (${XKBCOMMON_INCLUDE_DIRS})
+                list (APPEND libs ${XKBCOMMON_LIBRARIES})
+            else()
+                message (STATUS "xkbcommon not found: evdev remote-control capture disabled")
+            endif()
+        endif()
+
     endif()
 
     # For config.h, set some static values; it may be a good idea to make

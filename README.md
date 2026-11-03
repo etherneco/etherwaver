@@ -55,6 +55,21 @@ Design Goals:
 
 ------------------------------------------------------------------------
 
+## Remote control: keyboard and mouse at your desk, server in the rack
+
+A client can forward its **own** keyboard and mouse to the server over the
+existing encrypted connection. This helps when a wireless receiver plugged
+into a rack server loses its devices. Plug the receiver into the computer at
+your desk and press **Control with local mouse and keyboard** in the client
+window. **Ctrl+Alt+Shift+Q** always returns the input, even when the
+connection is down.
+
+Enable it on the server per screen (`remoteControl = true`).
+See [doc/remote-control.md](doc/remote-control.md) for setup, permissions,
+modes, platform support and limitations.
+
+------------------------------------------------------------------------
+
 ## Control API (Experimental)
 
 Etherwaver exposes a local HTTP API for automation and scripting.

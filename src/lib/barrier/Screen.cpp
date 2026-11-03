@@ -249,6 +249,54 @@ Screen::mouseWheel(SInt32 xDelta, SInt32 yDelta)
 }
 
 void
+Screen::injectKeyDown(KeyID id, KeyModifierMask mask, KeyButton button)
+{
+    m_screen->fakeKeyDown(id, mask, button);
+}
+
+void
+Screen::injectKeyRepeat(KeyID id, KeyModifierMask mask, SInt32 count, KeyButton button)
+{
+    m_screen->fakeKeyRepeat(id, mask, count, button);
+}
+
+void
+Screen::injectKeyUp(KeyButton button)
+{
+    m_screen->fakeKeyUp(button);
+}
+
+void
+Screen::injectMouseButton(ButtonID button, bool press)
+{
+    m_screen->fakeMouseButton(button, press);
+}
+
+void
+Screen::injectMouseMove(SInt32 x, SInt32 y)
+{
+    m_screen->fakeMouseMove(x, y);
+}
+
+void
+Screen::injectMouseRelativeMove(SInt32 dx, SInt32 dy)
+{
+    m_screen->fakeMouseRelativeMove(dx, dy);
+}
+
+void
+Screen::injectMouseWheel(SInt32 xDelta, SInt32 yDelta)
+{
+    // platform wheel injection handles one axis at a time
+    if (yDelta != 0) {
+        m_screen->fakeMouseWheel(0, yDelta);
+    }
+    if (xDelta != 0) {
+        m_screen->fakeMouseWheel(xDelta, 0);
+    }
+}
+
+void
 Screen::resetOptions()
 {
     // reset options

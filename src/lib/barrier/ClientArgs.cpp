@@ -20,6 +20,11 @@
 ClientArgs::ClientArgs() :
     m_yscroll(0),
     m_uhidEnabled(false),
-    m_uhidName("")
+    m_uhidName(""),
+    m_remoteControlReleaseHotkey(""),
+    m_remoteControlApiPort(24803),
+    m_remoteControlBackend("auto"),
+    m_remoteControlXkbLayout(""),
+    m_remoteControlXkbVariant("")
 {
 }

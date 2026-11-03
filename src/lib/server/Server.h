@@ -34,6 +34,7 @@
 #include "common/stdvector.h"
 #include "core/layout/ScreenManager.h"
 #include "platform/UhidEdgeTransitionService.h"
+#include "barrier/RemoteInput.h"
 
 #include <memory>
 #include <mutex>
@@ -47,6 +48,7 @@ namespace barrier { class Screen; }
 class IEventQueue;
 class Thread;
 class ClientListener;
+class RemoteControlArbiter;
 
 namespace etherwaver {
 namespace server {
@@ -175,6 +177,15 @@ public:
     bool onMouseMovePrimaryForTest(SInt32 x, SInt32 y) {
         return onMouseMovePrimary(x, y);
     }
+    RemoteControlArbiter* getRemoteControlForTest() { return m_remoteControl.get(); }
+    void enableRemoteControlForTest() { resetRemoteControlForTest(); }
+    void removeClientForTest(BaseClientProxy* client) {
+        remoteControlClientRemoved(client);
+        m_clients.erase(getName(client));
+    }
+    void remoteControlTickForTest(double now) { remoteControlTick(now); }
+    void setRemoteControlClockForTest(double now) { m_remoteControlTestClock = now; }
+    void jumpToScreenForTest(BaseClientProxy* dst) { jumpToScreen(dst); }
 #endif
 
     // Diagnostic/test constructor. It leaves the server inert until test code
@@ -242,6 +253,22 @@ public:
     */
     bool                switchToScreenName(const std::string& screenId);
     bool                onTransition(IUhidEdgeTransitionHandler::Direction direction);
+
+    //! @name remote control (protocol 1.8)
+    //@{
+
+    //! A client asks to control \p target (empty = the server itself)
+    void                onRemoteControlRequest(BaseClientProxy* client,
+                            bool takeover, const std::string& target);
+    //! The controller releases control
+    void                onRemoteControlRelease(BaseClientProxy* client, UInt32 epoch);
+    //! Input forwarded by a client
+    void                onRemoteInput(BaseClientProxy* client, UInt32 epoch,
+                            barrier::remote::Event event);
+    //! Name of the client currently controlling (empty if none)
+    std::string         getRemoteController() const;
+
+    //@}
 
     //! Return true if received file size is valid
     bool                isReceivedFileSizeValid();
@@ -602,4 +629,31 @@ private:
     EDirection          m_recentSwitchDirection;
 
     void                httpLoop();
+
+    // remote control (ServerRemoteControl.cpp)
+    void                initRemoteControl();
+    void                resetRemoteControlForTest();
+    void                shutdownRemoteControl();
+    void                applyRemoteControlOptions();
+    bool                isRemoteControlPermitted(const std::string& name) const;
+    BaseClientProxy*    findClientByName(const std::string& name) const;
+    void                injectRemoteEvent(const barrier::remote::Event& event);
+    void                injectRemoteEvents(const std::vector<barrier::remote::Event>& events);
+    void                sendRemoteControlStateTo(BaseClientProxy* client, int state, int reason);
+    void                broadcastRemoteControlState(BaseClientProxy* except);
+    UInt8               remoteControlCapabilities() const;
+    void                remoteControlTargetChanged();
+    void                remoteControlClientRemoved(BaseClientProxy* client);
+    void                remoteControlBeforeSwitch();
+    bool                isRemoteController(const BaseClientProxy* client) const;
+    double              remoteControlNow() const;
+    void                remoteControlTick(double now);
+    void                handleRemoteControlTimer(const Event&, void*);
+    void                updateRemoteControlSnapshot();
+
+    std::unique_ptr<RemoteControlArbiter> m_remoteControl;
+    EventQueueTimer*    m_remoteControlTimer = nullptr;
+    bool                m_remoteInputDispatch = false;
+    double              m_remoteControlTestClock = -1.0;
+    std::string         m_remoteControlSnapshot; // JSON, guarded by m_mutex
 };

@@ -34,7 +34,8 @@ const char* BaseConfig::m_FixNames[] =
     "halfDuplexNumLock",
     "halfDuplexScrollLock",
     "xtestIsXineramaUnaware",
-    "preserveFocus"
+    "preserveFocus",
+    "remoteControl"
 };
 
 const char* BaseConfig::m_SwitchCornerNames[] =

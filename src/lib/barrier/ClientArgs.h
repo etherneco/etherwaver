@@ -29,4 +29,11 @@ public:
     int                    m_yscroll;
     bool                m_uhidEnabled;
     String                m_uhidName;
+
+    // remote control (forward this computer's keyboard and mouse)
+    String              m_remoteControlReleaseHotkey; // empty = default
+    int                 m_remoteControlApiPort;       // 0 = disabled
+    String              m_remoteControlBackend;       // auto, x11, evdev, none
+    String              m_remoteControlXkbLayout;     // evdev: keyboard layout
+    String              m_remoteControlXkbVariant;    // evdev: layout variant
 };

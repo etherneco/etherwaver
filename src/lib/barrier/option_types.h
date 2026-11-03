@@ -68,6 +68,13 @@ static const OptionID    kOptionScreenPreserveFocus        = OPTION_CODE("SFOC")
 static const OptionID    kOptionRelativeMouseMoves        = OPTION_CODE("MDLT");
 static const OptionID    kOptionWin32KeepForeground        = OPTION_CODE("_KFW");
 static const OptionID    kOptionClipboardSharing            = OPTION_CODE("CLPS");
+// remote control (protocol 1.8): may this screen forward its local
+// keyboard and mouse to the server?  per screen, or global default.
+static const OptionID    kOptionRemoteControl            = OPTION_CODE("RCTL");
+// may a permitted screen take control away from the current controller?
+static const OptionID    kOptionRemoteControlTakeover    = OPTION_CODE("RCTO");
+// lease timeout in milliseconds after which held remote input is released
+static const OptionID    kOptionRemoteControlTimeout     = OPTION_CODE("RCTM");
 //@}
 
 //! @name Screen switch corner enumeration

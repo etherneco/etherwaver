@@ -1,0 +1,1 @@
+Added remote control: a client can forward its own keyboard and mouse to the server (protocol 1.8), with one controller at a time, an emergency release shortcut, automatic release of held keys on disconnect or timeout, a session-window mode, X11 and evdev capture backends, a client control panel and a per-screen "remoteControl" permission. See doc/remote-control.md.

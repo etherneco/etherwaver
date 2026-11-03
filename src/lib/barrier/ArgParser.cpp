@@ -141,6 +141,21 @@ ArgParser::parseClientArgs(ClientArgs& args, int argc, const char* const* argv)
                 return false;
             }
         }
+        else if (isArg(i, argc, argv, NULL, "--remote-control-release-hotkey", 1)) {
+            args.m_remoteControlReleaseHotkey = argv[++i];
+        }
+        else if (isArg(i, argc, argv, NULL, "--remote-control-api-port", 1)) {
+            args.m_remoteControlApiPort = atoi(argv[++i]);
+        }
+        else if (isArg(i, argc, argv, NULL, "--remote-control-backend", 1)) {
+            args.m_remoteControlBackend = argv[++i];
+        }
+        else if (isArg(i, argc, argv, NULL, "--remote-control-xkb-layout", 1)) {
+            args.m_remoteControlXkbLayout = argv[++i];
+        }
+        else if (isArg(i, argc, argv, NULL, "--remote-control-xkb-variant", 1)) {
+            args.m_remoteControlXkbVariant = argv[++i];
+        }
         else if (strcmp(argv[i], "--uhid-name") == 0) {
             if (i + 1 >= argc) {
                 LOG((CLOG_PRINT "%s: missing arguments for `%s'" BYE,

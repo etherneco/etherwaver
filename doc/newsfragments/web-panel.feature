@@ -1,0 +1,1 @@
+Added the waver-web browser management panel and an authenticated local control protocol for the server (--control-address); the desktop panel now reloads configuration changed by another panel and asks before overwriting it.
